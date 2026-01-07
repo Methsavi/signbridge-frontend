@@ -2,14 +2,15 @@ import React from 'react';
 
 const Footer = () => {
   return (
-    <footer className="bg-dark text-white py-6 mt-auto">
-      <div className="max-w-7xl mx-auto px-4 text-center">
-        <p className="text-sm">
-          &copy; {new Date().getFullYear()} SignBridge AI. All rights reserved.
+    <footer className="py-8 mt-auto text-white bg-black border-t border-gray-800">
+      <div className="px-4 mx-auto text-center max-w-7xl">
+        <p className="text-sm text-gray-500">
+          &copy; {new Date().getFullYear()} SignBridge AI. Bridging communication gaps universally.
         </p>
-        <div className="mt-2 space-x-4 text-gray-400 text-sm">
-          <a href="#" className="hover:text-white">Privacy Policy</a>
-          <a href="#" className="hover:text-white">Terms of Service</a>
+        <div className="flex justify-center mt-4 space-x-6 text-sm text-gray-400">
+          <a href="#" className="transition-colors hover:text-primary">Privacy Policy</a>
+          <a href="#" className="transition-colors hover:text-primary">Terms of Service</a>
+          <a href="#" className="transition-colors hover:text-primary">Contact Support</a>
         </div>
       </div>
     </footer>
