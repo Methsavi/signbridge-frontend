@@ -9,6 +9,7 @@ import LanguageSelector from '../components/LanguageSelector';
 
 const Translator = () => {
   const webcamRef = useRef(null);
+  const canvasRef = useRef(null); // <--- NEW: Reference for our drawing canvas
   
   // State
   const [mode, setMode] = useState('camera'); 
@@ -30,6 +31,54 @@ const Translator = () => {
   // Logic: Keep track of consecutive detections
   const stableSignRef = useRef({ sign: "", count: 0 }); 
   const lastAddedSignRef = useRef(""); 
+
+  // --- NEW: DRAWING FUNCTION FOR HAND LANDMARKS ---
+  const drawHand = (landmarks) => {
+    const canvas = canvasRef.current;
+    const video = webcamRef.current?.video;
+    if (!canvas || !video) return;
+
+    // Ensure the canvas internal resolution matches the actual video feed to prevent stretching
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const ctx = canvas.getContext("2d");
+    
+    // Clear previous frame
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Skeleton map: How the 21 dots connect to form fingers
+    const connections = [
+      [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+      [0, 5], [5, 6], [6, 7], [7, 8], // Index
+      [5, 9], [9, 10], [10, 11], [11, 12], // Middle
+      [9, 13], [13, 14], [14, 15], [15, 16], // Ring
+      [13, 17], [0, 17], [17, 18], [18, 19], [19, 20] // Pinky & Palm base
+    ];
+
+    ctx.strokeStyle = "#00FF00"; // Neon Green Lines
+    ctx.lineWidth = 4;
+    ctx.fillStyle = "#FF0000"; // Red Joints
+
+    // Draw the skeletal bones
+    connections.forEach(([startIdx, endIdx]) => {
+      const startPoint = landmarks[startIdx];
+      const endPoint = landmarks[endIdx];
+
+      ctx.beginPath();
+      // Because the webcam is CSS flipped (scale-x-[-1]), we invert the X coordinate (1 - x)
+      ctx.moveTo((1 - startPoint.x) * canvas.width, startPoint.y * canvas.height);
+      ctx.lineTo((1 - endPoint.x) * canvas.width, endPoint.y * canvas.height);
+      ctx.stroke();
+    });
+
+    // Draw the joint dots
+    landmarks.forEach((point) => {
+      ctx.beginPath();
+      ctx.arc((1 - point.x) * canvas.width, point.y * canvas.height, 5, 0, 2 * Math.PI);
+      ctx.fill();
+    });
+  };
 
   // --- 1. SENTENCE BUILDER LOGIC ---
   const handleSignStream = (newSign) => {
@@ -110,7 +159,6 @@ const Translator = () => {
   }, [inputText, targetLang, sourceLang]);
 
   // WEBSOCKET logic
-
   const startTranslation = () => {
     setIsRecording(true);
     socketRef.current = new WebSocket('ws://127.0.0.1:8000/ws/predict');
@@ -129,8 +177,18 @@ const Translator = () => {
 
     socketRef.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      
       if (data.sign) {
         handleSignStream(data.sign); // Send raw stream to builder logic
+      }
+
+      // <--- NEW: Trigger the canvas drawing if landmarks are returned
+      if (data.landmarks) {
+        drawHand(data.landmarks);
+      } else {
+        // If no hand is in frame, clear the canvas
+        const canvas = canvasRef.current;
+        if (canvas) canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
       }
     };
   };
@@ -140,8 +198,11 @@ const Translator = () => {
     if (socketRef.current) socketRef.current.close();
     if (intervalRef.current) clearInterval(intervalRef.current);
     
+    // Clear canvas when stopped
+    const canvas = canvasRef.current;
+    if (canvas) canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+
     // FINAL TRANSLATION ON STOP
-    // When user clicks stop, we assume the sentence is finished.
     handleTranslate(inputText);
   };
 
@@ -181,14 +242,19 @@ const Translator = () => {
               {mode === 'camera' ? (
                 <>
                   {isRecording ? (
-                    <Webcam audio={false} ref={webcamRef} className="w-full h-full object-cover transform scale-x-[-1]" />
+                    <>
+                      {/* Webcam Video */}
+                      <Webcam audio={false} ref={webcamRef} className="absolute inset-0 w-full h-full object-cover transform scale-x-[-1] z-0" />
+                      {/* NEW: Canvas Overlay placed exactly over the webcam */}
+                      <canvas ref={canvasRef} className="absolute inset-0 z-10 object-cover w-full h-full pointer-events-none" />
+                    </>
                   ) : (
                     <div className="flex flex-col items-center text-gray-500">
                       <Camera className="w-16 h-16 mb-4" />
                       <p>Camera is Off</p>
                     </div>
                   )}
-                  <div className="absolute left-0 right-0 flex justify-center bottom-4">
+                  <div className="absolute left-0 right-0 z-20 flex justify-center bottom-4">
                     <button
                       onClick={toggleRecording}
                       className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold shadow-lg ${
@@ -238,7 +304,7 @@ const Translator = () => {
                  </AnimatePresence>
                </div>
 
-               {/* -- NEW: Split Display -- */}
+               {/* Split Display */}
                
                {/* 1. Sentence Being Built */}
                <div className="flex-1 pb-4 mb-4 border-b border-gray-700">

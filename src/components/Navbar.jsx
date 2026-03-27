@@ -58,7 +58,8 @@ const Navbar = () => {
 
           {/* Desktop Menu */}
           <div className="items-center hidden space-x-8 md:flex">
-            {['Home', 'Translator', 'About'].map((item) => (
+            {/* NEW: Added 'Dictionary' to the navigation array */}
+            {['Home', 'Translator', 'Dictionary', 'About'].map((item) => (
               <Link 
                 key={item}
                 to={item === 'Home' ? '/' : `/${item.toLowerCase()}`}
@@ -144,7 +145,8 @@ const Navbar = () => {
       {isOpen && (
         <div className="bg-gray-900 border-b border-gray-800 md:hidden">
           <div className="px-2 pt-2 pb-3 space-y-1">
-            {['Home', 'Translator', 'About'].map((item) => (
+            {/* NEW: Added 'Dictionary' to the mobile navigation array */}
+            {['Home', 'Translator', 'Dictionary', 'About'].map((item) => (
               <Link 
                 key={item}
                 to={item === 'Home' ? '/' : `/${item.toLowerCase()}`}

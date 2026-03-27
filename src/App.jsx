@@ -8,6 +8,7 @@ import Register from './pages/Register';
 import About from './pages/About';
 import Translator from './pages/Translator';
 import Profile from './pages/Profile';
+import Dictionary from './pages/Dictionary';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/about" element={<About />} />
           <Route path="/translator" element={<Translator />} />
+          <Route path="/dictionary" element={<Dictionary />} />
           <Route path="/profile" element={<Profile />} />
         </Routes>
       </Router>
