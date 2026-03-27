@@ -1,30 +1,90 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Webcam from 'react-webcam';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, StopCircle, Volume2, Trash2, Globe, Keyboard, Video, CheckCircle } from 'lucide-react';
+import { Camera, StopCircle, Volume2, Trash2, Globe, Keyboard, Video, CheckCircle, Save, Delete } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { featureService } from '../services/api';
+import LanguageSelector from '../components/LanguageSelector';
 
 const Translator = () => {
   const webcamRef = useRef(null);
+  
+  // State
   const [mode, setMode] = useState('camera'); 
   const [isRecording, setIsRecording] = useState(false);
-  const [inputText, setInputText] = useState("");
+  const [inputText, setInputText] = useState(""); // This builds the sentence
   const [translatedText, setTranslatedText] = useState("...");
+  
   const [targetLang, setTargetLang] = useState('si'); 
+  const [sourceLang, setSourceLang] = useState('auto'); 
+  
   const [isAutoSpeak, setIsAutoSpeak] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); 
 
+  // Sentence Building Refs
   const socketRef = useRef(null);
   const intervalRef = useRef(null);
   const lastSavedRef = useRef(""); 
+  
+  // Logic: Keep track of consecutive detections
+  const stableSignRef = useRef({ sign: "", count: 0 }); 
+  const lastAddedSignRef = useRef(""); 
 
-  // --- 1. AUTO SAVE LOGIC ---
+  // --- 1. SENTENCE BUILDER LOGIC ---
+  const handleSignStream = (newSign) => {
+    // Ignore noise
+    if (!newSign || newSign === "..." || newSign === "Nothing") return;
+
+    // Check if sign is stable (same as previous frame)
+    if (newSign === stableSignRef.current.sign) {
+        stableSignRef.current.count += 1;
+    } else {
+        // Reset if sign changed
+        stableSignRef.current = { sign: newSign, count: 1 };
+    }
+
+    // THRESHOLD: If we see the same sign 5 times (~1 second), we accept it
+    if (stableSignRef.current.count === 5) {
+        // Prevent spamming the same letter endlessly (Debounce)
+        // Only add if it's different from the LAST added character OR enough time has passed
+        if (newSign !== lastAddedSignRef.current) {
+            processStableSign(newSign);
+            lastAddedSignRef.current = newSign;
+        }
+    }
+  };
+
+  const processStableSign = (sign) => {
+    setInputText(prev => {
+        // Handle Special Commands
+        if (sign.toLowerCase() === "space") return prev + " ";
+        if (sign.toLowerCase() === "del" || sign.toLowerCase() === "delete") return prev.slice(0, -1);
+        
+        // Append normal character
+        return prev + sign;
+    });
+  };
+
+  // --- 2. TRANSLATION (Triggered manually or on stop) ---
+  const handleTranslate = async (text) => {
+    if (!text) return;
+    
+    try {
+        const result = await featureService.translate(text, targetLang, sourceLang);
+        setTranslatedText(result.translated);
+        if (isAutoSpeak) speakText(result.translated);
+        
+        // Auto Save ONLY when translation happens (Complete sentence)
+        autoSaveHistory(text, result.translated, targetLang);
+    } catch (err) {
+        console.error("Translation error", err);
+    }
+  };
+
   const autoSaveHistory = async (original, translated, lang) => {
     const userStr = localStorage.getItem('user');
     if (!userStr) return; 
-
     const user = JSON.parse(userStr);
 
     if (original === lastSavedRef.current) return;
@@ -32,12 +92,7 @@ const Translator = () => {
 
     try {
       setSaveStatus('saving');
-      await featureService.saveHistory(
-        user.user_id, 
-        original, 
-        translated, 
-        lang
-      );
+      await featureService.saveHistory(user.user_id, original, translated, lang);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus(null), 2000);
     } catch (err) {
@@ -46,57 +101,36 @@ const Translator = () => {
     }
   };
 
-  // --- 2. HANDLE TRANSLATION ---
-  const handleTranslate = async (text) => {
-    if (!text) return;
-    
-    let finalTranslation = text;
-
-    if (targetLang === 'en') {
-      setTranslatedText(text);
-      if (isAutoSpeak) speakText(text);
-    } else {
-      try {
-        const result = await featureService.translate(text, targetLang);
-        setTranslatedText(result.translated);
-        finalTranslation = result.translated;
-        if (isAutoSpeak) speakText(result.translated);
-      } catch (err) {
-        console.error("Translation error", err);
-      }
-    }
-
-    autoSaveHistory(text, finalTranslation, targetLang);
-  };
-
+  // Debounced translation for Text Mode
   useEffect(() => {
     if (mode === 'text' && inputText) {
       const timeoutId = setTimeout(() => handleTranslate(inputText), 800);
       return () => clearTimeout(timeoutId);
     }
-  }, [inputText, targetLang]);
+  }, [inputText, targetLang, sourceLang]);
 
-  // --- 3. WEBSOCKET LOGIC ---
+  // WEBSOCKET logic
+
   const startTranslation = () => {
     setIsRecording(true);
     socketRef.current = new WebSocket('ws://127.0.0.1:8000/ws/predict');
     
+    stableSignRef.current = { sign: "", count: 0 };
+    lastAddedSignRef.current = "";
+
     socketRef.current.onopen = () => {
       intervalRef.current = setInterval(() => {
         if (webcamRef.current && socketRef.current?.readyState === WebSocket.OPEN) {
           const imgSrc = webcamRef.current.getScreenshot();
           if(imgSrc) socketRef.current.send(imgSrc);
         }
-      }, 200);
+      }, 200); 
     };
 
     socketRef.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.sign && data.sign !== "..." && data.sign !== "Nothing") {
-        if (data.sign !== inputText) {
-            setInputText(data.sign); 
-            handleTranslate(data.sign); 
-        }
+      if (data.sign) {
+        handleSignStream(data.sign); // Send raw stream to builder logic
       }
     };
   };
@@ -105,6 +139,10 @@ const Translator = () => {
     setIsRecording(false);
     if (socketRef.current) socketRef.current.close();
     if (intervalRef.current) clearInterval(intervalRef.current);
+    
+    // FINAL TRANSLATION ON STOP
+    // When user clicks stop, we assume the sentence is finished.
+    handleTranslate(inputText);
   };
 
   const toggleRecording = () => isRecording ? stopTranslation() : startTranslation();
@@ -157,7 +195,7 @@ const Translator = () => {
                         isRecording ? 'bg-red-500 text-white' : 'bg-primary text-white'
                       }`}
                     >
-                      {isRecording ? <><StopCircle /> Stop</> : <><Camera /> Start</>}
+                      {isRecording ? <><StopCircle /> Stop & Translate</> : <><Camera /> Start Signing</>}
                     </button>
                   </div>
                 </>
@@ -165,35 +203,28 @@ const Translator = () => {
                 <textarea
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Type here to translate..."
+                  placeholder="Type here..."
                   className="w-full h-full p-6 text-xl text-white bg-gray-800 resize-none focus:outline-none"
                 />
               )}
             </div>
           </div>
 
-          {/* RIGHT: OUTPUT & CONTROLS */}
+          {/* RIGHT: OUTPUT */}
           <div className="flex flex-col space-y-4">
             
-            <div className="flex items-center justify-between p-4 bg-gray-800 rounded-xl">
-              <div className="flex items-center gap-2">
-                <Globe className="text-primary" />
-                <span className="font-semibold">Translate to:</span>
+            <div className="flex flex-col gap-3 p-4 bg-gray-800 rounded-xl">
+              <div className="flex items-center justify-between gap-4">
+                <span className="w-12 text-sm font-semibold text-gray-400">From:</span>
+                <LanguageSelector selectedLang={sourceLang} onChange={setSourceLang} includeAuto={true} />
               </div>
-              <select 
-                value={targetLang} 
-                onChange={(e) => setTargetLang(e.target.value)}
-                className="p-2 text-white bg-gray-700 border-none rounded-lg focus:ring-2 focus:ring-primary"
-              >
-                <option value="en">English</option>
-                <option value="si">Sinhala (සිංහල)</option>
-                <option value="ta">Tamil (தமிழ்)</option>
-                <option value="fr">French (Français)</option>
-                <option value="ja">Japanese (日本語)</option>
-              </select>
+              <div className="flex items-center justify-between gap-4">
+                <span className="w-12 text-sm font-semibold text-gray-400">To:</span>
+                <LanguageSelector selectedLang={targetLang} onChange={setTargetLang} includeAuto={false} />
+              </div>
             </div>
 
-            <div className="relative flex flex-col items-center justify-center flex-grow w-full p-8 text-center bg-gray-800 border border-gray-700 rounded-3xl">
+            <div className="bg-gray-800 flex-grow rounded-3xl p-8 flex flex-col border border-gray-700 relative w-full min-h-[300px]">
                
                {/* Auto-Save Indicator */}
                <div className="absolute top-4 right-4">
@@ -207,29 +238,32 @@ const Translator = () => {
                  </AnimatePresence>
                </div>
 
-               <h2 className="mb-4 text-sm tracking-widest text-gray-400 uppercase">Translation Result</h2>
+               {/* -- NEW: Split Display -- */}
                
-               {/* --- CHANGED: Added word-break and responsive sizing --- */}
-               <p className="w-full px-4 mb-2 text-3xl font-bold text-white break-words md:text-5xl">
-                 {translatedText}
-               </p>
-               
-               {/* --- CHANGED: Reduced font size and handled overflow --- */}
-               <p className="w-full px-4 mt-2 text-sm text-gray-500 break-words">
-                 Input: {inputText || "..."}
-               </p>
+               {/* 1. Sentence Being Built */}
+               <div className="flex-1 pb-4 mb-4 border-b border-gray-700">
+                 <h2 className="mb-2 text-xs tracking-widest text-gray-400 uppercase">Input Sentence</h2>
+                 <p className="text-2xl font-mono text-gray-300 w-full break-words min-h-[60px]">
+                   {inputText || <span className="text-gray-600 opacity-50">Waiting for signs...</span>}
+                   {/* Blinking Cursor */}
+                   {isRecording && <span className="inline-block w-2 h-6 ml-1 align-middle bg-primary animate-pulse"></span>}
+                 </p>
+               </div>
+
+               {/* 2. Final Translation */}
+               <div className="flex-1">
+                 <h2 className="mb-2 text-xs tracking-widest text-gray-400 uppercase">Translation Result</h2>
+                 <p className="w-full text-3xl font-bold text-white break-words md:text-4xl">
+                   {translatedText}
+                 </p>
+               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-               <button onClick={() => speakText(translatedText)} className="flex items-center justify-center gap-2 p-4 bg-gray-700 rounded-xl hover:bg-gray-600">
-                 <Volume2 /> Speak
-               </button>
-               <button onClick={() => setIsAutoSpeak(!isAutoSpeak)} className={`p-4 rounded-xl flex justify-center items-center gap-2 border ${isAutoSpeak ? 'bg-green-900 border-green-500 text-green-400' : 'bg-gray-700 border-transparent'}`}>
-                 {isAutoSpeak ? "Auto On" : "Auto Off"}
-               </button>
-               <button onClick={() => { setTranslatedText("..."); setInputText(""); }} className="flex items-center justify-center gap-2 p-4 text-red-400 border bg-red-900/20 border-red-500/30 rounded-xl hover:bg-red-900/40">
-                 <Trash2 /> Clear
-               </button>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+               <button onClick={() => speakText(translatedText)} className="flex items-center justify-center gap-2 p-4 bg-gray-700 rounded-xl hover:bg-gray-600"><Volume2 /> Speak</button>
+               <button onClick={() => setInputText(prev => prev.slice(0, -1))} className="flex items-center justify-center gap-2 p-4 bg-gray-700 rounded-xl hover:bg-gray-600"><Delete size={20} /> Backspace</button>
+               <button onClick={() => setInputText(prev => prev + " ")} className="flex items-center justify-center gap-2 p-4 bg-gray-700 rounded-xl hover:bg-gray-600"><Keyboard size={20} /> Space</button>
+               <button onClick={() => { setTranslatedText("..."); setInputText(""); }} className="flex items-center justify-center gap-2 p-4 text-red-400 border bg-red-900/20 border-red-500/30 rounded-xl hover:bg-red-900/40"><Trash2 /> Clear</button>
             </div>
 
           </div>
