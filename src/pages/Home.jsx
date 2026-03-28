@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Hand, Globe, Mic, ArrowRight, Zap, Heart } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { Link } from 'react-router-dom';
 
 // Floating Icons Configuration
 const floatingIcons = [
@@ -71,20 +72,30 @@ const Home = () => {
               </p>
             </motion.div>
 
-            <motion.div 
+          <motion.div 
               className="flex justify-center gap-4 mt-10"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.5, duration: 0.5 }}
             >
-              <button className="flex items-center gap-2 px-8 py-4 text-lg font-bold text-white transition-all rounded-full shadow-lg bg-primary hover:bg-indigo-600 group">
+              {/* Button 1: Goes to Translator */}
+              <Link 
+                to="/translator" 
+                className="flex items-center gap-2 px-8 py-4 text-lg font-bold text-white transition-all rounded-full shadow-lg bg-primary hover:bg-indigo-600 group"
+              >
                 Start Translating
                 <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-              </button>
-              <button className="px-8 py-4 text-lg font-bold text-white transition-all bg-gray-800 border border-gray-700 rounded-full hover:bg-gray-700">
-                View Demo
-              </button>
+              </Link>
+              
+              {/* Button 2: Goes to Dictionary */}
+              <Link 
+                to="/dictionary" 
+                className="px-8 py-4 text-lg font-bold text-white transition-all bg-gray-800 border border-gray-700 rounded-full hover:bg-gray-700"
+              >
+                Sign Dictionary
+              </Link>
             </motion.div>
+            
           </div>
         </div>
 
