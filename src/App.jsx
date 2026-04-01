@@ -9,6 +9,9 @@ import About from './pages/About';
 import Translator from './pages/Translator';
 import Profile from './pages/Profile';
 import Dictionary from './pages/Dictionary';
+import HowToUse from './pages/HowToUse';
+import Privacy from './pages/Privacy';
+import Terms from './pages/Terms';
 
 function App() {
   return (
@@ -23,6 +26,9 @@ function App() {
           <Route path="/translator" element={<Translator />} />
           <Route path="/dictionary" element={<Dictionary />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/how-to-use" element={<HowToUse />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
         </Routes>
       </Router>
     </ToastProvider>
