@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 const Footer = () => {
   return (
@@ -7,10 +8,12 @@ const Footer = () => {
         <p className="text-sm text-gray-500">
           &copy; {new Date().getFullYear()} SignBridge AI. Bridging communication gaps universally.
         </p>
-        <div className="flex justify-center mt-4 space-x-6 text-sm text-gray-400">
-          <a href="#" className="transition-colors hover:text-primary">Privacy Policy</a>
-          <a href="#" className="transition-colors hover:text-primary">Terms of Service</a>
-          <a href="#" className="transition-colors hover:text-primary">Contact Support</a>
+        
+        <div className="flex flex-wrap justify-center mt-4 text-sm text-gray-400 gap-x-6 gap-y-2">
+          <Link to="/how-to-use" className="transition-colors hover:text-primary">How to Use</Link>
+          <Link to="/privacy" className="transition-colors hover:text-primary">Privacy Policy</Link>
+          <Link to="/terms" className="transition-colors hover:text-primary">Terms of Service</Link>
+          
         </div>
       </div>
     </footer>
