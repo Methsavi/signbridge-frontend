@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ToastProvider } from './context/ToastContext'; // <--- NEW IMPORT
+import { ToastProvider } from './context/ToastContext'; 
 
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -15,7 +15,7 @@ import Terms from './pages/Terms';
 
 function App() {
   return (
-    // Wrap everything in ToastProvider
+   
     <ToastProvider> 
       <Router>
         <Routes>
