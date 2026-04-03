@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 body {
-  background-color: paleturquoise;
+  @apply bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 transition-colors duration-300;
   font-family: sans-serif;
 }
 
