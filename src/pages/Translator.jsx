@@ -216,52 +216,72 @@ const Translator = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen text-white bg-gray-900">
+    <div className="flex flex-col min-h-screen text-gray-900 bg-gray-50 dark:text-white dark:bg-gray-900 transition-colors duration-300">
       <Navbar />
       <main className="flex-grow p-4 md:p-8">
         <div className="grid grid-cols-1 gap-8 mx-auto max-w-7xl lg:grid-cols-2">
           
           {/* LEFT: INPUT AREA */}
-          <div className="flex flex-col gap-4">
-            <div className="flex gap-2 p-2 bg-gray-800 rounded-xl w-fit">
+          <div className="flex flex-col gap-6">
+            
+            {/* Elegant Mode Toggle */}
+            <div className="inline-flex p-1.5 bg-gray-200/50 dark:bg-gray-800/50 backdrop-blur-md rounded-full shadow-inner border border-gray-200/50 dark:border-gray-700/50 w-fit">
               <button 
                 onClick={() => { setMode('camera'); setIsRecording(false); }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${mode === 'camera' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}`}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 ${mode === 'camera' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
               >
-                <Video size={20} /> Sign Mode
+                <Video size={18} /> Sign Mode
               </button>
               <button 
                 onClick={() => { setMode('text'); stopTranslation(); }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${mode === 'text' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}`}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 ${mode === 'text' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
               >
-                <Keyboard size={20} /> Text Mode
+                <Keyboard size={18} /> Text Mode
               </button>
             </div>
 
-            <div className="relative flex items-center justify-center overflow-hidden bg-gray-800 border border-gray-700 shadow-2xl rounded-3xl aspect-video">
+            {/* Premium Camera/Input Container */}
+            <div className="relative flex items-center justify-center overflow-hidden bg-gray-100/50 border border-gray-200/50 shadow-2xl dark:bg-gray-800/30 dark:border-gray-700/50 rounded-3xl aspect-video backdrop-blur-sm group">
+              
+              {/* Subtle inner glow */}
+              <div className="absolute inset-0 z-0 pointer-events-none rounded-3xl ring-1 ring-inset ring-black/5 dark:ring-white/5" />
+
               {mode === 'camera' ? (
                 <>
                   {isRecording ? (
-                    <>
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-0 w-full h-full">
                       {/* Webcam Video */}
-                      <Webcam audio={false} ref={webcamRef} className="absolute inset-0 w-full h-full object-cover transform scale-x-[-1] z-0" />
-                      {/* NEW: Canvas Overlay placed exactly over the webcam */}
+                      <Webcam audio={false} ref={webcamRef} className="object-cover w-full h-full transform scale-x-[-1]" />
+                      {/* Canvas Overlay placed exactly over the webcam */}
                       <canvas ref={canvasRef} className="absolute inset-0 z-10 object-cover w-full h-full pointer-events-none" />
-                    </>
+                      
+                      {/* Recording Indicator */}
+                      <div className="absolute z-20 flex items-center gap-2 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-full top-4 right-4 shadow-lg border border-white/10">
+                        <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+                        <span className="text-xs font-medium tracking-wide text-white uppercase">Live</span>
+                      </div>
+                    </motion.div>
                   ) : (
-                    <div className="flex flex-col items-center text-gray-500">
-                      <Camera className="w-16 h-16 mb-4" />
-                      <p>Camera is Off</p>
+                    <div className="z-10 flex flex-col items-center text-gray-400 dark:text-gray-500 transition-transform duration-500 group-hover:scale-105">
+                      <div className="flex items-center justify-center w-20 h-20 mb-6 bg-white shadow-sm dark:bg-gray-800 rounded-full border border-gray-100 dark:border-gray-700">
+                        <Camera className="w-10 h-10 text-gray-300 dark:text-gray-600" />
+                      </div>
+                      <p className="text-lg font-medium tracking-wide text-gray-800 dark:text-gray-300">Ready to translate</p>
+                      <p className="mt-1 text-sm opacity-70">Turn on camera to begin signing</p>
                     </div>
                   )}
-                  <div className="absolute left-0 right-0 z-20 flex justify-center bottom-4">
+                  
+                  {/* Floating Action Button */}
+                  <div className="absolute left-0 right-0 z-20 flex justify-center bottom-6">
                     <button
                       onClick={toggleRecording}
-                      className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold shadow-lg ${
-                        isRecording ? 'bg-red-500 text-white' : 'bg-primary text-white'
+                      className={`flex items-center gap-3 px-8 py-4 rounded-full font-bold shadow-2xl transition-all duration-300 hover:-translate-y-1 active:translate-y-0 ${
+                        isRecording 
+                        ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/40 ring-4 ring-red-500/20' 
+                        : 'bg-primary hover:bg-indigo-600 text-white shadow-primary/40 ring-4 ring-primary/20'
                       }`}
                     >
-                      {isRecording ? <><StopCircle /> Stop & Translate</> : <><Camera /> Start Signing</>}
+                      {isRecording ? <><StopCircle size={22} /> Stop Translation</> : <><Camera size={22} /> Start Signing</>}
                     </button>
                   </div>
                 </>
@@ -269,67 +289,96 @@ const Translator = () => {
                 <textarea
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Type here..."
-                  className="w-full h-full p-6 text-xl text-white bg-gray-800 resize-none focus:outline-none"
+                  placeholder="Start typing your phrase here..."
+                  className="relative z-10 w-full h-full p-8 text-xl text-gray-900 bg-transparent resize-none md:text-2xl dark:text-white placeholder-gray-400/80 dark:placeholder-gray-600 focus:outline-none"
                 />
               )}
             </div>
           </div>
 
-          {/* RIGHT: OUTPUT */}
+          {/* RIGHT: OUTPUT AREA */}
           <div className="flex flex-col space-y-4">
             
-            <div className="flex flex-col gap-3 p-4 bg-gray-800 rounded-xl">
-              <div className="flex items-center justify-between gap-4">
-                <span className="w-12 text-sm font-semibold text-gray-400">From:</span>
-                <LanguageSelector selectedLang={sourceLang} onChange={setSourceLang} includeAuto={true} />
+            {/* Language Selectors */}
+            <div className="relative z-50 flex flex-col gap-4 p-5 bg-white border border-gray-200 shadow-sm dark:bg-[#1e293b] dark:border-gray-700/30 rounded-2xl">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-gray-700 dark:text-gray-300">From:</span>
+                <div className="w-56 sm:w-64">
+                  <LanguageSelector selectedLang={sourceLang} onChange={setSourceLang} includeAuto={true} />
+                </div>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="w-12 text-sm font-semibold text-gray-400">To:</span>
-                <LanguageSelector selectedLang={targetLang} onChange={setTargetLang} includeAuto={false} />
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-gray-700 dark:text-gray-300">To:</span>
+                <div className="w-56 sm:w-64">
+                  <LanguageSelector selectedLang={targetLang} onChange={setTargetLang} includeAuto={false} />
+                </div>
               </div>
             </div>
 
-            <div className="bg-gray-800 flex-grow rounded-3xl p-8 flex flex-col border border-gray-700 relative w-full min-h-[300px]">
+            {/* Translation Result Card */}
+            <div className="relative flex flex-col w-full min-h-[220px] flex-grow p-6 bg-white border border-gray-200 shadow-sm dark:bg-[#1e293b]/60 dark:border-gray-700/30 rounded-[2rem]">
                
                {/* Auto-Save Indicator */}
-               <div className="absolute top-4 right-4">
+               <div className="absolute top-6 right-6">
                  <AnimatePresence>
-                   {saveStatus === 'saving' && <span className="text-xs text-gray-400 animate-pulse">Saving...</span>}
+                   {saveStatus === 'saving' && (
+                     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-2 px-3 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded-full dark:bg-[#334155] dark:text-gray-400">
+                       <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"></span> Saving...
+                     </motion.div>
+                   )}
                    {saveStatus === 'saved' && (
-                     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-1 text-xs text-green-400">
+                     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-green-600 bg-green-100 rounded-full dark:bg-green-900/30 dark:text-green-400">
                        <CheckCircle size={12} /> Saved
                      </motion.div>
                    )}
                  </AnimatePresence>
                </div>
 
-               {/* Split Display */}
-               
-               {/* 1. Sentence Being Built */}
-               <div className="flex-1 pb-4 mb-4 border-b border-gray-700">
-                 <h2 className="mb-2 text-xs tracking-widest text-gray-400 uppercase">Input Sentence</h2>
-                 <p className="text-2xl font-mono text-gray-300 w-full break-words min-h-[60px]">
-                   {inputText || <span className="text-gray-600 opacity-50">Waiting for signs...</span>}
-                   {/* Blinking Cursor */}
-                   {isRecording && <span className="inline-block w-2 h-6 ml-1 align-middle bg-primary animate-pulse"></span>}
-                 </p>
-               </div>
+               {/* 1. Sentence Being Built (Only shown in camera mode) */}
+               {mode === 'camera' && (
+                 <div className="flex-1 pb-6 mb-6 border-b border-gray-100 dark:border-gray-600/30">
+                   <h2 className="mb-6 text-xs tracking-widest text-gray-500 uppercase dark:text-gray-400/80">
+                     Input Sentence
+                   </h2>
+                   <p className="w-full min-h-[60px] text-xl font-mono text-gray-700 break-words dark:text-gray-500/80">
+                     {inputText || "Waiting for signs..."}
+                     {isRecording && <span className="inline-block w-2.5 h-5 ml-1 align-middle bg-primary animate-pulse"></span>}
+                   </p>
+                 </div>
+               )}
 
                {/* 2. Final Translation */}
                <div className="flex-1">
-                 <h2 className="mb-2 text-xs tracking-widest text-gray-400 uppercase">Translation Result</h2>
-                 <p className="w-full text-3xl font-bold text-white break-words md:text-4xl">
+                 <h2 className="mb-6 text-xs tracking-widest text-gray-500 uppercase dark:text-gray-400/80">
+                   Translation Result
+                 </h2>
+                 <p className="w-full text-4xl font-extrabold tracking-tight text-gray-900 break-words md:text-5xl dark:text-white leading-tight">
                    {translatedText}
                  </p>
                </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-               <button onClick={() => speakText(translatedText)} className="flex items-center justify-center gap-2 p-4 bg-gray-700 rounded-xl hover:bg-gray-600"><Volume2 /> Speak</button>
-               <button onClick={() => setInputText(prev => prev.slice(0, -1))} className="flex items-center justify-center gap-2 p-4 bg-gray-700 rounded-xl hover:bg-gray-600"><Delete size={20} /> Backspace</button>
-               <button onClick={() => setInputText(prev => prev + " ")} className="flex items-center justify-center gap-2 p-4 bg-gray-700 rounded-xl hover:bg-gray-600"><Keyboard size={20} /> Space</button>
-               <button onClick={() => { setTranslatedText("..."); setInputText(""); }} className="flex items-center justify-center gap-2 p-4 text-red-400 border bg-red-900/20 border-red-500/30 rounded-xl hover:bg-red-900/40"><Trash2 /> Clear</button>
+            {/* Action Buttons Grid */}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+               <button onClick={() => speakText(translatedText)} className="flex items-center justify-center gap-3 p-4 text-gray-700 transition-colors bg-white border border-gray-200 rounded-xl dark:text-white dark:bg-[#334155] dark:border-transparent hover:brightness-110">
+                 <Volume2 size={20} />
+                 <span className="text-sm font-medium">Speak</span>
+               </button>
+               
+               <button onClick={() => setInputText(prev => prev.slice(0, -1))} className="flex items-center justify-center gap-3 p-4 text-gray-700 transition-colors bg-white border border-gray-200 rounded-xl dark:text-white dark:bg-[#334155] dark:border-transparent hover:brightness-110">
+                 <Delete size={20} />
+                 <span className="text-sm font-medium">Backspace</span>
+               </button>
+               
+               <button onClick={() => setInputText(prev => prev + " ")} className="flex items-center justify-center gap-3 p-4 text-gray-700 transition-colors bg-white border border-gray-200 rounded-xl dark:text-white dark:bg-[#334155] dark:border-transparent hover:brightness-110">
+                 <Keyboard size={20} />
+                 <span className="text-sm font-medium">Space</span>
+               </button>
+               
+               <button onClick={() => { setTranslatedText("..."); setInputText(""); }} className="flex items-center justify-center gap-3 p-4 text-red-500 transition-colors bg-red-50 border border-red-100 rounded-xl dark:bg-[#341b25] dark:border-[#52212d] dark:text-[#f87171] hover:brightness-110">
+                 <Trash2 size={20} />
+                 <span className="text-sm font-medium">Clear</span>
+               </button>
             </div>
 
           </div>

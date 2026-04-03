@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ToastProvider } from './context/ToastContext'; 
+import { ThemeProvider } from './context/ThemeContext';
 
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -17,20 +18,22 @@ function App() {
   return (
    
     <ToastProvider> 
-      <Router>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/translator" element={<Translator />} />
-          <Route path="/dictionary" element={<Dictionary />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/how-to-use" element={<HowToUse />} />
-          <Route path="/privacy" element={<Privacy />} />
-          <Route path="/terms" element={<Terms />} />
-        </Routes>
-      </Router>
+      <ThemeProvider>
+        <Router>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/translator" element={<Translator />} />
+            <Route path="/dictionary" element={<Dictionary />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/how-to-use" element={<HowToUse />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
+          </Routes>
+        </Router>
+      </ThemeProvider>
     </ToastProvider>
   );
 }

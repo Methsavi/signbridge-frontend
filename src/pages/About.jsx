@@ -6,7 +6,7 @@ import Footer from '../components/Footer';
 
 const About = () => {
   return (
-    <div className="flex flex-col min-h-screen text-white bg-gray-900">
+    <div className="flex flex-col min-h-screen text-gray-900 bg-gray-50 dark:text-white dark:bg-gray-900 transition-colors duration-300">
       <Navbar />
 
       <main className="relative flex-grow overflow-hidden">
@@ -27,16 +27,16 @@ const About = () => {
                 Connection
               </span>
             </h1>
-            <p className="max-w-3xl mx-auto text-xl leading-relaxed text-gray-400">
+            <p className="max-w-3xl mx-auto text-xl leading-relaxed text-gray-600 dark:text-gray-400">
               SignBridge AI was born from a simple belief: <br />
-              <span className="font-semibold text-white">Communication is a fundamental human right.</span> <br />
+              <span className="font-semibold text-gray-900 dark:text-white">Communication is a fundamental human right.</span> <br />
               We are using cutting-edge Artificial Intelligence to break down the barriers between sign language users and the rest of the world.
             </p>
           </motion.div>
         </section>
 
         {/* --- HOW IT WORKS (TECH STACK) --- */}
-        <section className="py-20 bg-gray-800/30 backdrop-blur-sm">
+        <section className="py-20 bg-white/50 dark:bg-gray-800/30 backdrop-blur-sm transition-colors">
           <div className="px-4 mx-auto max-w-7xl sm:px-6 lg:px-8">
             <motion.div 
               initial={{ opacity: 0 }}
@@ -45,7 +45,7 @@ const About = () => {
               className="mb-16 text-center"
             >
               <h2 className="mb-4 text-3xl font-bold">Powered by Advanced Tech</h2>
-              <p className="text-gray-400">A seamless blend of modern web technologies and computer vision.</p>
+              <p className="text-gray-600 dark:text-gray-400">A seamless blend of modern web technologies and computer vision.</p>
             </motion.div>
 
             <div className="grid gap-8 md:grid-cols-3">
@@ -73,7 +73,7 @@ const About = () => {
 
         {/* --- DEVELOPER SECTION --- */}
         <section className="px-4 py-24 mx-auto max-w-7xl sm:px-6 lg:px-8">
-          <div className="relative p-8 overflow-hidden border border-gray-700 shadow-2xl bg-gradient-to-br from-gray-800 to-gray-900 rounded-3xl md:p-12">
+          <div className="relative p-8 overflow-hidden border border-gray-200 dark:border-gray-700 shadow-2xl bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-3xl md:p-12 transition-colors">
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-[80px]" />
             
             <div className="relative z-10 flex flex-col items-center gap-12 md:flex-row">
@@ -82,7 +82,7 @@ const About = () => {
                 initial={{ scale: 0.8, opacity: 0 }}
                 whileInView={{ scale: 1, opacity: 1 }}
                 viewport={{ once: true }}
-                className="flex items-center justify-center w-48 h-48 bg-gray-700 border-4 border-gray-600 rounded-full shadow-xl"
+                className="flex items-center justify-center w-48 h-48 bg-gray-100 dark:bg-gray-700 border-4 border-gray-300 dark:border-gray-600 rounded-full shadow-xl"
               >
                 <UserAvatar />
               </motion.div>
@@ -90,7 +90,7 @@ const About = () => {
               <div className="flex-1 text-center md:text-left">
                 <h2 className="mb-2 text-3xl font-bold">Hewa M Savindya</h2>
                 <p className="mb-6 font-medium text-primary">Lead Developer & Researcher</p>
-                <p className="mb-8 leading-relaxed text-gray-400">
+                <p className="mb-8 leading-relaxed text-gray-600 dark:text-gray-400">
                   I am a Software Engineering undergraduate passionate about using technology for social good. 
                   SignBridge is my individual computing project aimed at solving real-world accessibility challenges through AI innovation.
                 </p>
@@ -119,18 +119,18 @@ const TechCard = ({ icon, title, desc, delay }) => (
     whileInView={{ y: 0, opacity: 1 }}
     viewport={{ once: true }}
     transition={{ delay }}
-    className="p-8 transition-colors bg-gray-800 border border-gray-700 rounded-2xl hover:border-primary hover:shadow-lg hover:shadow-primary/10"
+    className="p-8 transition-colors bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm dark:shadow-none rounded-2xl hover:border-primary dark:hover:border-primary hover:shadow-lg hover:shadow-primary/10"
   >
     <div className="mb-4">{icon}</div>
     <h3 className="mb-3 text-xl font-bold">{title}</h3>
-    <p className="leading-relaxed text-gray-400">{desc}</p>
+    <p className="leading-relaxed text-gray-600 dark:text-gray-400">{desc}</p>
   </motion.div>
 );
 
 const SocialLink = ({ icon, href, label }) => (
   <a 
     href={href} 
-    className="p-3 transition-all transform bg-gray-700 rounded-full hover:bg-primary hover:text-white hover:-translate-y-1"
+    className="p-3 transition-all transform bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-white rounded-full hover:bg-primary hover:text-white dark:hover:bg-primary dark:hover:text-white hover:-translate-y-1"
     aria-label={label}
   >
     {icon}

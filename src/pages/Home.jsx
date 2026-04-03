@@ -17,40 +17,40 @@ const floatingIcons = [
 
 const Home = () => {
   return (
-    <div className="flex flex-col min-h-screen overflow-hidden text-white bg-gray-900">
+    <div className="relative flex flex-col min-h-screen text-gray-900 bg-gray-50 dark:text-white dark:bg-gray-900 transition-colors duration-300">
+      {/* --- BACKGROUND ANIMATION --- */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {/* Gradient blobs */}
+        <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-primary/20 rounded-full blur-[100px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-purple-600/20 rounded-full blur-[100px]" />
+
+        {/* Floating Signs */}
+        {floatingIcons.map((item, index) => (
+          <motion.div
+            key={index}
+            className="absolute text-6xl select-none opacity-20"
+            initial={{ x: item.x, y: item.y }}
+            animate={{ 
+              y: [0, -20, 0],
+              rotate: [0, 10, -10, 0]
+            }}
+            transition={{ 
+              duration: 6, 
+              repeat: Infinity, 
+              delay: item.delay,
+              ease: "easeInOut" 
+            }}
+            style={{ left: item.x, top: item.y }}
+          >
+            {item.icon}
+          </motion.div>
+        ))}
+      </div>
+
       <Navbar />
 
-      <main className="relative flex-grow">
+      <main className="relative flex-grow z-10">
         
-        {/* --- BACKGROUND ANIMATION --- */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          {/* Gradient blobs */}
-          <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-primary/20 rounded-full blur-[100px]" />
-          <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-purple-600/20 rounded-full blur-[100px]" />
-
-          {/* Floating Signs */}
-          {floatingIcons.map((item, index) => (
-            <motion.div
-              key={index}
-              className="absolute text-6xl select-none opacity-20"
-              initial={{ x: item.x, y: item.y }}
-              animate={{ 
-                y: [0, -20, 0],
-                rotate: [0, 10, -10, 0]
-              }}
-              transition={{ 
-                duration: 6, 
-                repeat: Infinity, 
-                delay: item.delay,
-                ease: "easeInOut" 
-              }}
-              style={{ left: item.x, top: item.y }}
-            >
-              {item.icon}
-            </motion.div>
-          ))}
-        </div>
-
         {/* --- HERO SECTION --- */}
         <div className="relative z-10 px-4 pt-20 pb-16 mx-auto max-w-7xl sm:px-6 lg:px-8">
           <div className="text-center">
@@ -66,7 +66,7 @@ const Home = () => {
               <h1 className="mb-6 text-5xl font-extrabold tracking-tight md:text-7xl">
                 Break the Silence <br/> with <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-400">AI Power</span>
               </h1>
-              <p className="max-w-2xl mx-auto mt-4 text-xl text-gray-400">
+              <p className="max-w-2xl mx-auto mt-4 text-xl text-gray-600 dark:text-gray-400">
                 Experience real-time Sign Language Translation powered by advanced Computer Vision.
                 Bridging the gap between signers and speakers instantly.
               </p>
@@ -90,7 +90,7 @@ const Home = () => {
               {/* Button 2: Goes to Dictionary */}
               <Link 
                 to="/dictionary" 
-                className="px-8 py-4 text-lg font-bold text-white transition-all bg-gray-800 border border-gray-700 rounded-full hover:bg-gray-700"
+                className="px-8 py-4 text-lg font-bold text-gray-900 transition-all bg-white border border-gray-300 rounded-full dark:text-white dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
               >
                 Sign Dictionary
               </Link>
@@ -137,18 +137,18 @@ const Home = () => {
 const FeatureCard = ({ icon, title, desc, delay }) => {
   return (
     <motion.div 
-      className="p-8 transition-colors border border-gray-700 bg-gray-800/50 backdrop-blur-sm rounded-2xl hover:border-primary/50"
+      className="p-8 transition-colors border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl hover:border-primary/50 dark:hover:border-primary/50 shadow-sm dark:shadow-none"
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ delay: delay, duration: 0.5 }}
       whileHover={{ y: -5 }}
     >
-      <div className="flex items-center justify-center mb-6 bg-gray-700/50 w-14 h-14 rounded-xl">
+      <div className="flex items-center justify-center mb-6 bg-gray-100 dark:bg-gray-700/50 w-14 h-14 rounded-xl">
         {icon}
       </div>
-      <h3 className="mb-3 text-xl font-bold text-white">{title}</h3>
-      <p className="leading-relaxed text-gray-400">{desc}</p>
+      <h3 className="mb-3 text-xl font-bold text-gray-900 dark:text-white">{title}</h3>
+      <p className="leading-relaxed text-gray-600 dark:text-gray-400">{desc}</p>
     </motion.div>
   );
 };
