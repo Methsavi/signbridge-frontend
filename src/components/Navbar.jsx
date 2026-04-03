@@ -46,7 +46,7 @@ const Navbar = () => {
   const closeMenu = () => setIsOpen(false);
 
   return (
-    <div className="sticky top-4 z-50 px-4 md:px-8 w-full mb-6 relative">
+    <div className="sticky top-4 z-[100] px-4 md:px-8 w-full mb-6 relative">
       <nav className={`mx-auto max-w-7xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-gray-200 dark:border-gray-700 shadow-xl transition-all duration-300 ${isOpen ? 'rounded-2xl' : 'rounded-full'}`}>
         <div className="px-4 mx-auto sm:px-6 lg:px-8">
           <div className="relative flex items-center justify-between h-16">

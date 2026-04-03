@@ -300,7 +300,7 @@ const Translator = () => {
           <div className="flex flex-col space-y-4">
             
             {/* Language Selectors */}
-            <div className="relative z-50 flex flex-col gap-4 p-5 bg-white border border-gray-200 shadow-sm dark:bg-[#1e293b] dark:border-gray-700/30 rounded-2xl">
+            <div className="relative z-30 flex flex-col gap-4 p-5 bg-white border border-gray-200 shadow-sm dark:bg-[#1e293b] dark:border-gray-700/30 rounded-2xl">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-gray-700 dark:text-gray-300">From:</span>
                 <div className="w-56 sm:w-64">
