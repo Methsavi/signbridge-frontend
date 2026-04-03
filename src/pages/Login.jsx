@@ -34,7 +34,7 @@ const Login = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen text-white bg-gray-900">
+    <div className="flex flex-col min-h-screen text-gray-900 bg-gray-50 dark:text-white dark:bg-gray-900 transition-colors duration-300">
       <Navbar />
       
       <main className="relative flex items-center justify-center flex-grow px-4 overflow-hidden">
@@ -46,7 +46,7 @@ const Login = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="relative z-10 w-full max-w-md p-8 space-y-8 border border-gray-700 shadow-2xl bg-gray-800/50 backdrop-blur-lg rounded-2xl"
+          className="relative z-10 w-full max-w-md p-8 space-y-8 border shadow-2xl bg-white/80 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 backdrop-blur-lg rounded-2xl transition-colors"
         >
           <div className="text-center">
             <motion.div 
@@ -58,7 +58,7 @@ const Login = () => {
               <LogIn className="w-6 h-6 text-primary" />
             </motion.div>
             <h2 className="text-3xl font-bold tracking-tight">Welcome Back</h2>
-            <p className="mt-2 text-sm text-gray-400">
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
               Sign in to access your translation history
             </p>
           </div>
@@ -84,7 +84,7 @@ const Login = () => {
                   name="email"
                   type="email"
                   required
-                  className="block w-full py-3 pl-10 pr-3 leading-5 text-gray-100 placeholder-gray-500 transition-all border border-gray-600 rounded-lg bg-gray-900/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm"
+                  className="block w-full py-3 pl-10 pr-3 leading-5 text-gray-900 placeholder-gray-400 transition-all border border-gray-300 rounded-lg bg-white/50 dark:text-gray-100 dark:placeholder-gray-500 dark:border-gray-600 dark:bg-gray-900/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm"
                   placeholder="Email address"
                   onChange={handleChange}
                 />
@@ -98,7 +98,7 @@ const Login = () => {
                   name="password"
                   type="password"
                   required
-                  className="block w-full py-3 pl-10 pr-3 leading-5 text-gray-100 placeholder-gray-500 transition-all border border-gray-600 rounded-lg bg-gray-900/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm"
+                  className="block w-full py-3 pl-10 pr-3 leading-5 text-gray-900 placeholder-gray-400 transition-all border border-gray-300 rounded-lg bg-white/50 dark:text-gray-100 dark:placeholder-gray-500 dark:border-gray-600 dark:bg-gray-900/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm"
                   placeholder="Password"
                   onChange={handleChange}
                 />
@@ -119,7 +119,7 @@ const Login = () => {
           </form>
           
           <div className="mt-4 text-center">
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
               Don't have an account?{' '}
               <Link to="/register" className="font-medium transition-colors text-primary hover:text-indigo-400">
                 Register here
