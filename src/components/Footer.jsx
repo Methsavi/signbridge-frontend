@@ -4,7 +4,7 @@ import { Globe, Facebook, Twitter, Github } from 'lucide-react';
 
 const Footer = () => {
   return (
-    <footer className="pt-16 pb-8 mt-auto text-gray-900 transition-colors duration-300 bg-white border-t border-gray-200 dark:text-gray-300 dark:bg-gray-950 dark:border-gray-800 z-10 relative">
+    <footer className="pt-16 pb-8 mt-auto text-gray-900 transition-colors duration-300 bg-indigo-50 border-t border-indigo-100 dark:text-gray-300 dark:bg-gray-950 dark:border-gray-800 z-10 relative">
       <div className="px-4 mx-auto max-w-7xl sm:px-6 lg:px-8">
         
         {/* Top Section: 3 Columns */}
@@ -44,15 +44,15 @@ const Footer = () => {
             <div className="w-full md:w-auto">
               <h3 className="mb-6 text-sm font-bold tracking-wider text-gray-900 uppercase dark:text-white">Connect With Us</h3>
               <div className="flex gap-4 mb-6">
-                <a href="#" className="p-2.5 text-gray-600 transition-colors bg-gray-100 rounded-full dark:bg-gray-800/50 dark:text-gray-300 hover:bg-primary hover:text-white dark:hover:bg-primary dark:hover:text-white">
+                <Link to="/not-found" className="p-2.5 text-gray-600 transition-colors bg-gray-100 rounded-full dark:bg-gray-800/50 dark:text-gray-300 hover:bg-primary hover:text-white dark:hover:bg-primary dark:hover:text-white">
                   <Facebook className="w-5 h-5" />
-                </a>
-                <a href="#" className="p-2.5 text-gray-600 transition-colors bg-gray-100 rounded-full dark:bg-gray-800/50 dark:text-gray-300 hover:bg-primary hover:text-white dark:hover:bg-primary dark:hover:text-white">
+                </Link>
+                <Link to="/not-found" className="p-2.5 text-gray-600 transition-colors bg-gray-100 rounded-full dark:bg-gray-800/50 dark:text-gray-300 hover:bg-primary hover:text-white dark:hover:bg-primary dark:hover:text-white">
                   <Twitter className="w-5 h-5" />
-                </a>
-                <a href="#" className="p-2.5 text-gray-600 transition-colors bg-gray-100 rounded-full dark:bg-gray-800/50 dark:text-gray-300 hover:bg-primary hover:text-white dark:hover:bg-primary dark:hover:text-white">
+                </Link>
+                <Link to="/not-found" className="p-2.5 text-gray-600 transition-colors bg-gray-100 rounded-full dark:bg-gray-800/50 dark:text-gray-300 hover:bg-primary hover:text-white dark:hover:bg-primary dark:hover:text-white">
                   <Github className="w-5 h-5" />
-                </a>
+                </Link>
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 contact@signbridge.ai
@@ -68,10 +68,9 @@ const Footer = () => {
           <div className="flex flex-wrap items-center gap-6">
             <Link to="/privacy" className="transition-colors hover:text-primary">Privacy Policy</Link>
             <Link to="/terms" className="transition-colors hover:text-primary">Terms of Service</Link>
-            <a href="mailto:contact@signbridge.ai" className="transition-colors hover:text-primary">Contact</a>
+            <Link to="/not-found" className="transition-colors hover:text-primary">Contact</Link>
           </div>
         </div>
-
       </div>
     </footer>
   );
