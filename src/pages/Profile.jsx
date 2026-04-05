@@ -25,23 +25,21 @@ const Profile = () => {
 
   // --- 1. INITIAL LOAD ---
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) {
-      navigate('/login');
-      return;
-    }
-
-    const parsedUser = JSON.parse(storedUser);
-    setUser(parsedUser);
-    setFormData({ username: parsedUser.username, email: parsedUser.email });
-
-    authService.getUser(parsedUser.user_id).then(freshUser => {
-        setUser(freshUser);
-        localStorage.setItem('user', JSON.stringify(freshUser));
+    const loadProfile = async () => {
+      try {
+        const currentUser = await authService.getUser();
+        setUser(currentUser);
+        setFormData({ username: currentUser.username, email: currentUser.email });
+        localStorage.setItem('user', JSON.stringify(currentUser));
         window.dispatchEvent(new Event('user-update'));
-    }).catch(err => console.error("Failed to refresh user:", err));
+        fetchHistory(currentUser.user_id);
+      } catch (error) {
+        console.error('Failed to load user session:', error);
+        navigate('/login');
+      }
+    };
 
-    fetchHistory(parsedUser.user_id);
+    void loadProfile();
   }, [navigate]);
 
   const fetchHistory = async (userId) => {
@@ -74,13 +72,21 @@ const Profile = () => {
 
   // --- 3. UPDATE PROFILE TEXT ---
   const handleUpdateProfile = () => {
-    const updatedUser = { ...user, ...formData };
-    localStorage.setItem('user', JSON.stringify(updatedUser));
-    setUser(updatedUser);
-    setIsEditing(false);
-    window.dispatchEvent(new Event('user-update'));
-    
-    addToast("Profile details updated!", "success"); // <--- Custom Toast
+    const saveProfile = async () => {
+      try {
+        const updatedUser = await authService.updateProfile(formData.username, formData.email);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        setUser(updatedUser);
+        setIsEditing(false);
+        window.dispatchEvent(new Event('user-update'));
+        addToast('Profile details updated!', 'success');
+      } catch (error) {
+        console.error('Failed to update profile:', error);
+        addToast('Failed to update profile.', 'error');
+      }
+    };
+
+    void saveProfile();
   };
 
   // --- 4. HANDLE AVATAR UPLOAD ---
@@ -120,10 +126,20 @@ const Profile = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
-    window.dispatchEvent(new Event('user-update'));
-    addToast("Logged out successfully", "info");
-    navigate('/');
+    const logoutUser = async () => {
+      try {
+        await authService.logout();
+      } catch {
+        // Ignore logout cleanup failures.
+      }
+
+      localStorage.removeItem('user');
+      window.dispatchEvent(new Event('user-update'));
+      addToast('Logged out successfully', 'info');
+      navigate('/');
+    };
+
+    void logoutUser();
   };
 
   if (!user) return null;
