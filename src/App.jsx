@@ -13,6 +13,7 @@ import Dictionary from './pages/Dictionary';
 import HowToUse from './pages/HowToUse';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
+import NotFound from './pages/NotFound';
 
 // Admin Pages
 import AdminLayout from './pages/admin/AdminLayout';
@@ -46,6 +47,9 @@ function App() {
               <Route path="admins" element={<AdminManagement />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>
+
+            {/* Catch-all 404 Route */}
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Router>
       </ThemeProvider>
