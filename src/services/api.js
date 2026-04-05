@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { account, ID, normalizeUser } from '../lib/appwtite';
 
 // The URL of your running FastAPI server
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = import.meta.env.VITE_API_URL;
 
 // Create a configured axios instance
 const api = axios.create({
@@ -12,47 +13,159 @@ const api = axios.create({
 });
 
 export const authService = {
+  // OAuth login/register
+  signInWithOAuth: (provider, successUrl, failureUrl) => {
+    account.createOAuth2Session(provider, successUrl, failureUrl);
+  },
+
+  signInWithGoogle: (successUrl, failureUrl) => {
+    account.createOAuth2Session('google', successUrl, failureUrl);
+  },
+
+  signInWithMicrosoft: (successUrl, failureUrl) => {
+    account.createOAuth2Session('microsoft', successUrl, failureUrl);
+  },
+
   // Login
   login: async (email, password) => {
     try {
-      const response = await api.post('/users/login', { email, password });
-      return response.data;
+      await account.createEmailPasswordSession(email, password);
+      const user = await account.get();
+      return normalizeUser(user);
     } catch (error) {
-      throw error.response ? error.response.data : error;
+      throw error;
     }
   },
 
-  // Register
-  register: async (username, email, password) => {
+  // Start registration and send OTP email
+  register: async (fullName, email, password) => {
     try {
-      const response = await api.post('/users/register', { 
-        username, 
-        email, 
-        password 
-      });
-      return response.data;
+      const createdUser = await account.create(ID.unique(), email, password, fullName);
+      const token = await account.createEmailToken(createdUser.$id, email, false);
+
+      return {
+        userId: token.userId || createdUser.$id,
+        email,
+        fullName,
+        message: 'Verification OTP sent to your email.',
+      };
     } catch (error) {
-      throw error.response ? error.response.data : error;
+      throw error;
+    }
+  },
+
+  // Verify registration OTP and create session
+  verifyRegistrationOtp: async (userId, otp, fullName, email, password) => {
+    try {
+      await account.createSession(userId, otp);
+
+      const user = await account.get();
+
+      await account.updatePrefs({
+        username: fullName,
+        full_name: fullName,
+        email,
+        profile_picture: '',
+      });
+
+      // Keep MongoDB users collection in sync with Appwrite-authenticated users.
+      try {
+        // Legacy backend schema expects username/email/password.
+        await api.post('/users/register', {
+          username: fullName,
+          email,
+          password,
+        });
+      } catch {
+        // Fallback for newer schema variants that include explicit full_name/user_id.
+        await api.post('/users/register', {
+          user_id: user.$id,
+          username: fullName,
+          full_name: fullName,
+          email,
+          password,
+        });
+      }
+
+      const refreshedUser = await account.get();
+      return normalizeUser(refreshedUser);
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Resend registration OTP
+  resendRegistrationOtp: async (userId, email) => {
+    try {
+      const token = await account.createEmailToken(userId, email, false);
+      return {
+        userId: token.userId || userId,
+        message: 'A new OTP has been sent to your email.',
+      };
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Logout
+  logout: async () => {
+    try {
+      await account.deleteSession('current');
+    } catch (error) {
+      throw error;
     }
   },
 
   // Upload Avatar
   uploadAvatar: async (userId, file) => {
-    const formData = new FormData();
-    formData.append('file', file);
+    try {
+      const currentUser = await account.get();
 
-    const response = await api.patch(`/users/${userId}/profile-picture`, formData, {
-      headers: {
-        'Content-Type': undefined 
-      }
-    });
-    return response.data;
+      const imageUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      await account.updatePrefs({
+        ...(currentUser.prefs || {}),
+        profile_picture: imageUrl,
+      });
+
+      return { url: imageUrl };
+    } catch (error) {
+      throw error;
+    }
   },
 
   // Get Fresh User Data (NEW)
-  getUser: async (userId) => {
-    const response = await api.get(`/users/${userId}`);
-    return response.data;
+  getUser: async () => {
+    try {
+      const user = await account.get();
+      return normalizeUser(user);
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Update Profile
+  updateProfile: async (username, email) => {
+    try {
+      const currentUser = await account.get();
+
+      await account.updateName(username);
+      await account.updatePrefs({
+        ...(currentUser.prefs || {}),
+        username,
+        email,
+      });
+
+      const updatedUser = await account.get();
+      return normalizeUser(updatedUser);
+    } catch (error) {
+      throw error;
+    }
   }
 };
 
