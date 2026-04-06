@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Webcam from 'react-webcam';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, StopCircle, Volume2, Trash2, Globe, Keyboard, Video, CheckCircle, Save, Delete } from 'lucide-react';
+import { Camera, StopCircle, Volume2, Trash2, Globe, Keyboard, Video, CheckCircle, Save, Delete, Type, Hash, MessageSquare } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { featureService } from '../services/api';
@@ -13,6 +13,7 @@ const Translator = () => {
 
   // State
   const [mode, setMode] = useState('camera');
+  const [signMode, setSignMode] = useState('word');
   const [isRecording, setIsRecording] = useState(false);
   const [inputText, setInputText] = useState("");
   const [translatedText, setTranslatedText] = useState("...");
@@ -27,6 +28,7 @@ const Translator = () => {
   const socketRef = useRef(null);
   const intervalRef = useRef(null);
   const lastSavedRef = useRef("");
+  const signModeRef = useRef("word");
 
   // Logic: Keep track of consecutive detections
   const stableSignRef = useRef({ sign: "", count: 0 });
@@ -96,6 +98,11 @@ const Translator = () => {
     setInputText(prev => {
       if (sign.toLowerCase() === "space") return prev + " ";
       if (sign.toLowerCase() === "del" || sign.toLowerCase() === "delete") return prev.slice(0, -1);
+      
+      // Auto-append spaces in word mode
+      if (signModeRef.current === 'word' && prev.length > 0 && !prev.endsWith(' ')) {
+        return prev + ' ' + sign;
+      }
       return prev + sign;
     });
   };
@@ -121,7 +128,9 @@ const Translator = () => {
 
     try {
       setSaveStatus('saving');
-      await featureService.saveHistory(user.user_id, original, translated, lang);
+      const currentMode = mode === 'camera' ? signModeRef.current : 'text';
+      const currentSource = mode === 'camera' ? 'sign' : sourceLang;
+      await featureService.saveHistory(user.user_id, original, translated, lang, currentMode, currentSource);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus(null), 2000);
     } catch (err) {
@@ -148,8 +157,12 @@ const Translator = () => {
     if (socketRef.current) socketRef.current.close();
     if (intervalRef.current) clearInterval(intervalRef.current);
 
-    console.log("🎥 Camera is ready. Opening WebSocket...");
-    socketRef.current = new WebSocket(`${import.meta.env.VITE_WS_URL}/ws/predict`);
+    const currentMode = signModeRef.current;
+    console.log(`🎥 Camera is ready. Opening WebSocket for ${currentMode} mode...`);
+    
+    // Choose endpoint based on signMode
+    const endpoint = `/ws/predict/${currentMode}`;
+    socketRef.current = new WebSocket(`${import.meta.env.VITE_WS_URL}${endpoint}`);
 
     stableSignRef.current = { sign: "", count: 0 };
     lastAddedSignRef.current = "";
@@ -173,6 +186,14 @@ const Translator = () => {
         if (canvas) canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
       }
     };
+  };
+
+  const handleSignModeChange = (newMode) => {
+    setSignMode(newMode);
+    signModeRef.current = newMode;
+    if (isRecording && webcamRef.current?.video?.readyState === 4) {
+      initSocket();
+    }
   };
 
   const stopTranslation = () => {
@@ -199,19 +220,50 @@ const Translator = () => {
         <div className="grid grid-cols-1 gap-8 mx-auto max-w-7xl lg:grid-cols-2">
 
           <div className="flex flex-col gap-6">
-            <div className="inline-flex p-1.5 bg-gray-200/50 dark:bg-gray-800/50 backdrop-blur-md rounded-full shadow-inner border border-gray-200/50 dark:border-gray-700/50 w-fit">
-              <button
-                onClick={() => { setMode('camera'); setIsRecording(false); }}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 ${mode === 'camera' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
-              >
-                <Video size={18} /> Sign Mode
-              </button>
-              <button
-                onClick={() => { setMode('text'); stopTranslation(); }}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 ${mode === 'text' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
-              >
-                <Keyboard size={18} /> Text Mode
-              </button>
+            <div className="flex flex-col gap-3">
+              <div className="inline-flex p-1.5 bg-gray-200/50 dark:bg-gray-800/50 backdrop-blur-md rounded-full shadow-inner border border-gray-200/50 dark:border-gray-700/50 w-fit">
+                <button
+                  onClick={() => { setMode('camera'); setIsRecording(false); }}
+                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 ${mode === 'camera' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
+                >
+                  <Video size={18} /> Sign Mode
+                </button>
+                <button
+                  onClick={() => { setMode('text'); stopTranslation(); }}
+                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 ${mode === 'text' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
+                >
+                  <Keyboard size={18} /> Text Mode
+                </button>
+              </div>
+
+              <AnimatePresence>
+                {mode === 'camera' && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10, height: 0 }} 
+                    animate={{ opacity: 1, y: 0, height: 'auto' }} 
+                    exit={{ opacity: 0, y: -10, height: 0 }}
+                    className="inline-flex p-1 bg-indigo-50/50 dark:bg-[#1e293b]/50 backdrop-blur-md rounded-full shadow-sm border border-indigo-100/50 dark:border-gray-700/50 w-fit overflow-hidden"
+                  >
+                    {[
+                      { id: 'word', label: 'Word Mode', icon: MessageSquare },
+                      { id: 'alphabet', label: 'Alphabet Mode', icon: Type },
+                      { id: 'number', label: 'Number Mode', icon: Hash }
+                    ].map((sm) => {
+                      const Icon = sm.icon;
+                      const isActive = signMode === sm.id;
+                      return (
+                        <button
+                          key={sm.id}
+                          onClick={() => handleSignModeChange(sm.id)}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-300 ${isActive ? 'bg-primary text-white shadow-md' : 'text-gray-600 hover:text-primary dark:text-gray-400 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-700/50'}`}
+                        >
+                          <Icon size={14} /> {sm.label}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <div className="relative flex items-center justify-center overflow-hidden bg-gray-100/50 border border-gray-200/50 shadow-2xl dark:bg-gray-800/30 dark:border-gray-700/50 rounded-3xl aspect-video backdrop-blur-sm group">
@@ -268,20 +320,22 @@ const Translator = () => {
           </div>
 
           <div className="flex flex-col space-y-4">
-            <div className="relative z-30 flex flex-col gap-4 p-5 bg-white border border-gray-200 shadow-sm dark:bg-[#1e293b] dark:border-gray-700/30 rounded-2xl">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-gray-700 dark:text-gray-300">From:</span>
-                <div className="w-56 sm:w-64">
-                  <LanguageSelector selectedLang={sourceLang} onChange={setSourceLang} includeAuto={true} />
+            {!(mode === 'camera' && signMode === 'number') && (
+              <div className="relative z-30 flex flex-col gap-4 p-5 bg-white border border-gray-200 shadow-sm dark:bg-[#1e293b] dark:border-gray-700/30 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-gray-700 dark:text-gray-300">From:</span>
+                  <div className="w-56 sm:w-64">
+                    <LanguageSelector selectedLang={sourceLang} onChange={setSourceLang} includeAuto={true} />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-gray-700 dark:text-gray-300">To:</span>
+                  <div className="w-56 sm:w-64">
+                    <LanguageSelector selectedLang={targetLang} onChange={setTargetLang} includeAuto={false} />
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-gray-700 dark:text-gray-300">To:</span>
-                <div className="w-56 sm:w-64">
-                  <LanguageSelector selectedLang={targetLang} onChange={setTargetLang} includeAuto={false} />
-                </div>
-              </div>
-            </div>
+            )}
 
             <div className="relative flex flex-col w-full min-h-[220px] flex-grow p-6 bg-white border border-gray-200 shadow-sm dark:bg-[#1e293b]/60 dark:border-gray-700/30 rounded-[2rem]">
               <div className="absolute top-6 right-6">
@@ -300,7 +354,9 @@ const Translator = () => {
               </div>
               {mode === 'camera' && (
                 <div className="flex-1 pb-6 mb-6 border-b border-gray-100 dark:border-gray-600/30">
-                  <h2 className="mb-6 text-xs tracking-widest text-gray-500 uppercase dark:text-gray-400/80 font-bold">Input Sentence</h2>
+                  <h2 className="mb-6 text-xs tracking-widest text-gray-500 uppercase dark:text-gray-400/80 font-bold">
+                    {signMode === 'alphabet' ? 'Input Letter' : signMode === 'number' ? 'Input Numbers' : 'Input Sentence'}
+                  </h2>
                   <p className="w-full min-h-[60px] text-xl font-mono text-gray-700 break-words dark:text-gray-500/80">
                     {inputText || "Waiting for signs..."}
                     {isRecording && <span className="inline-block w-2.5 h-5 ml-1 align-middle bg-primary animate-pulse"></span>}

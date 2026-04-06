@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Search, Check, Sparkles } from 'lucide-react';
 
 // Comprehensive list of languages supported by Google Translate
-const LANGUAGES = [
+export const LANGUAGES = [
   { code: 'af', name: 'Afrikaans' },
   { code: 'sq', name: 'Albanian' },
   { code: 'am', name: 'Amharic' },
