@@ -13,6 +13,14 @@ import Dictionary from './pages/Dictionary';
 import HowToUse from './pages/HowToUse';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
+import NotFound from './pages/NotFound';
+
+// Admin Pages
+import AdminLayout from './pages/admin/AdminLayout';
+import AdminDashboard from './pages/admin/Dashboard';
+import AdminUserManagement from './pages/admin/UserManagement';
+import AdminManagement from './pages/admin/AdminManagement';
+import AdminSettings from './pages/admin/Settings';
 
 function App() {
   return (
@@ -31,6 +39,17 @@ function App() {
             <Route path="/how-to-use" element={<HowToUse />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
+            
+            {/* Admin Routes */}
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<AdminDashboard />} />
+              <Route path="users" element={<AdminUserManagement />} />
+              <Route path="admins" element={<AdminManagement />} />
+              <Route path="settings" element={<AdminSettings />} />
+            </Route>
+
+            {/* Catch-all 404 Route */}
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Router>
       </ThemeProvider>

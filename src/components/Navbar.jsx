@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Menu, X, Globe, User, LogOut, ChevronDown, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
+import { authService } from '../services/api';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -13,18 +14,26 @@ const Navbar = () => {
   const location = useLocation();
 
   // Helper to load user
-  const loadUser = () => {
+  const loadUser = async () => {
     const loggedUser = localStorage.getItem('user');
+
     if (loggedUser) {
       setUser(JSON.parse(loggedUser));
-    } else {
+      return;
+    }
+
+    try {
+      const currentUser = await authService.getUser();
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      setUser(currentUser);
+    } catch {
       setUser(null);
     }
   };
 
   // Listen for login/logout/update events
   useEffect(() => {
-    loadUser(); // Load on mount
+    void loadUser(); // Load on mount
 
     // Listen for custom "user-update" event (triggered by Profile/Login pages)
     window.addEventListener('user-update', loadUser);
@@ -34,20 +43,25 @@ const Navbar = () => {
     };
   }, [location]); // Also check when URL changes
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+    } catch {
+      // Ignore session cleanup failures and continue clearing local state.
+    }
+
     localStorage.removeItem('user');
     setUser(null);
     setIsProfileOpen(false);
-    // Notify other components that user is gone
-    window.dispatchEvent(new Event('user-update')); 
+    window.dispatchEvent(new Event('user-update'));
     navigate('/');
   };
 
   const closeMenu = () => setIsOpen(false);
 
   return (
-    <div className="sticky top-4 z-50 px-4 md:px-8 w-full mb-6 relative">
-      <nav className={`mx-auto max-w-7xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-gray-200 dark:border-gray-700 shadow-xl transition-all duration-300 ${isOpen ? 'rounded-2xl' : 'rounded-full'}`}>
+    <div className="sticky top-4 z-[100] px-4 md:px-8 w-full mb-6">
+      <nav className={`mx-auto max-w-7xl bg-indigo-50/90 dark:bg-gray-900/80 backdrop-blur-xl border border-indigo-100 dark:border-gray-700 shadow-xl transition-all duration-300 ${isOpen ? 'rounded-2xl' : 'rounded-full'}`}>
         <div className="px-4 mx-auto sm:px-6 lg:px-8">
           <div className="relative flex items-center justify-between h-16">
             
