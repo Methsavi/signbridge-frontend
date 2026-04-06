@@ -179,19 +179,43 @@ export const featureService = {
     return response.data;
   },
 
-  saveHistory: async (userId, original, translated, lang) => {
+  saveHistory: async (userId, original, translated, lang, mode = 'word', sourceLang = 'sign') => {
     const response = await api.post('/features/history', {
       user_id: userId,
-      original_text: original,
+      original_text: `[${mode}|${sourceLang}]${original}`,
       translated_text: translated,
-      target_language: lang
+      target_language: lang,
+      mode: mode // Kept for future backend compatibility
     });
     return response.data;
   },
 
   getHistory: async (userId) => {
     const response = await api.get(`/features/history/${userId}`);
-    return response.data;
+    return response.data.map(item => {
+      let parsedMode = item.mode;
+      let parsedSource = parsedMode === 'text' ? 'auto' : 'sign';
+      let text = item.original_text;
+      
+      const match = text?.match(/^\[(.*?)\](.*)/);
+      if (match) {
+        const metadata = match[1].split('|');
+        parsedMode = metadata[0];
+        if (metadata.length > 1) {
+          parsedSource = metadata[1];
+        } else {
+          parsedSource = parsedMode === 'text' ? 'auto' : 'sign';
+        }
+        text = match[2] || '';
+      }
+      
+      return {
+        ...item,
+        mode: parsedMode || 'text',
+        source_language: parsedSource,
+        original_text: text
+      };
+    });
   },
 
   deleteHistory: async (itemId, userId) => {
