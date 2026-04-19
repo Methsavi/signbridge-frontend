@@ -121,12 +121,26 @@ export const authService = {
     try {
       const currentUser = await account.get();
 
-      const imageUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await api.patch(
+        `/users/${encodeURIComponent(userId)}/profile-picture`,
+        formData,
+        {
+          params: {
+            email: currentUser.email,
+          },
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      const imageUrl = response?.data?.url;
+      if (!imageUrl) {
+        throw new Error('Profile image upload failed');
+      }
 
       await account.updatePrefs({
         ...(currentUser.prefs || {}),
