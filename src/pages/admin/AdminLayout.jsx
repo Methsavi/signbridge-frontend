@@ -1,20 +1,44 @@
-import React, { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/admin/Sidebar';
 import Topbar from '../../components/admin/Topbar';
 
 const AdminLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkAuth = () => {
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        navigate('/admin/login');
+        return;
+      }
+      
+      try {
+        const user = JSON.parse(userStr);
+        if (!user.is_admin_session) {
+          navigate('/admin/login');
+        }
+      } catch (err) {
+        navigate('/admin/login');
+      }
+    };
+
+    checkAuth();
+    window.addEventListener('user-update', checkAuth);
+    return () => window.removeEventListener('user-update', checkAuth);
+  }, [navigate]);
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans transition-colors duration-300">
       <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
-      
+
       <div className="lg:ml-64 flex flex-col min-h-screen transition-all duration-300">
         <Topbar toggleSidebar={toggleSidebar} />
-        
+
         <main className="flex-1 p-4 lg:p-8 overflow-x-hidden">
           <div className="max-w-7xl mx-auto">
             <Outlet />

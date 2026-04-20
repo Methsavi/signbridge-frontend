@@ -12,18 +12,92 @@ const api = axios.create({
   },
 });
 
+const getReadableAuthError = (error) => {
+  const message = error?.response?.message || error?.message || 'Authentication failed.';
+
+  if (String(message).includes('Precondition Failed') || error?.code === 412) {
+    return 'Google authentication is not configured correctly in Appwrite. Please check Web platform and Google OAuth provider settings.';
+  }
+
+  return message;
+};
+
 export const authService = {
   // OAuth login/register
-  signInWithOAuth: (provider, successUrl, failureUrl) => {
+  signInWithOAuth: async (provider, successUrl, failureUrl) => {
+    // Ensure the user can choose an account instead of silently reusing an existing Appwrite session.
+    try {
+      await account.deleteSession('current');
+    } catch {
+      // Ignore when no session exists.
+    }
+
     account.createOAuth2Session(provider, successUrl, failureUrl);
   },
 
-  signInWithGoogle: (successUrl, failureUrl) => {
+  signInWithGoogle: async (successUrl, failureUrl) => {
+    try {
+      await account.deleteSession('current');
+    } catch {
+      // Ignore when no session exists.
+    }
+
     account.createOAuth2Session('google', successUrl, failureUrl);
   },
 
   signInWithMicrosoft: (successUrl, failureUrl) => {
     account.createOAuth2Session('microsoft', successUrl, failureUrl);
+  },
+
+  // Finalize OAuth callback and ensure the site account exists in backend.
+  handleOAuthCallback: async () => {
+    try {
+      const user = await account.get();
+
+      if (user?.emailVerification === false) {
+        try {
+          await account.deleteSession('current');
+        } catch {
+          // Ignore cleanup failure.
+        }
+        throw new Error('Your Google email is not verified. Please verify it in Google and try again.');
+      }
+
+      const normalized = normalizeUser(user);
+      const username = normalized.username || user.name || user.email?.split('@')[0] || 'User';
+      const email = normalized.email || user.email || '';
+
+      // Keep user prefs consistent for profile pages and UI rendering.
+      await account.updatePrefs({
+        ...(user.prefs || {}),
+        username,
+        full_name: user.name || username,
+        email,
+        profile_picture: typeof user.prefs?.profile_picture === 'string' ? user.prefs.profile_picture : '',
+      });
+
+      // Sync OAuth users to backend users collection.
+      // Backend register needs a password, so use a deterministic internal value for OAuth identities.
+      if (email) {
+        try {
+          await api.post('/users/register', {
+            username,
+            email,
+            password: `oauth-${user.$id}-google-signbridge`,
+          });
+        } catch (syncError) {
+          const detail = syncError?.response?.data?.detail;
+          if (detail !== 'Email already registered') {
+            throw syncError;
+          }
+        }
+      }
+
+      const refreshedUser = await account.get();
+      return normalizeUser(refreshedUser);
+    } catch (error) {
+      throw error;
+    }
   },
 
   // Login
@@ -121,12 +195,26 @@ export const authService = {
     try {
       const currentUser = await account.get();
 
-      const imageUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await api.patch(
+        `/users/${encodeURIComponent(userId)}/profile-picture`,
+        formData,
+        {
+          params: {
+            email: currentUser.email,
+          },
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      const imageUrl = response?.data?.url;
+      if (!imageUrl) {
+        throw new Error('Profile image upload failed');
+      }
 
       await account.updatePrefs({
         ...(currentUser.prefs || {}),
@@ -225,5 +313,54 @@ export const featureService = {
     return response.data;
   }
 };
+
+export const adminService = {
+  getDashboardStats: async () => {
+    const response = await api.get('/users/admin/dashboard-stats');
+    return response.data;
+  },
+
+  getUsers: async (params = {}) => {
+    const response = await api.get('/users/admin/users', { params });
+    return response.data;
+  },
+
+  createUser: async (payload) => {
+    const response = await api.post('/users/admin/users', payload);
+    return response.data;
+  },
+
+  updateUser: async (id, payload) => {
+    const response = await api.put(`/users/admin/users/${encodeURIComponent(id)}`, payload);
+    return response.data;
+  },
+
+  deleteUser: async (id) => {
+    const response = await api.delete(`/users/admin/users/${encodeURIComponent(id)}`);
+    return response.data;
+  },
+
+  getAdmins: async (params = {}) => {
+    const response = await api.get('/users/admin/admins', { params });
+    return response.data;
+  },
+
+  createAdmin: async (payload) => {
+    const response = await api.post('/users/admin/admins', payload);
+    return response.data;
+  },
+
+  updateAdmin: async (id, payload) => {
+    const response = await api.put(`/users/admin/admins/${encodeURIComponent(id)}`, payload);
+    return response.data;
+  },
+
+  deleteAdmin: async (id) => {
+    const response = await api.delete(`/users/admin/admins/${encodeURIComponent(id)}`);
+    return response.data;
+  }
+};
+
+export { getReadableAuthError };
 
 export default api;

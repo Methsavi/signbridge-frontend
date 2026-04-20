@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { User, Mail, Lock, UserPlus, AlertCircle } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { authService } from '../services/api';
+import { authService, getReadableAuthError } from '../services/api';
 
 const GoogleLogo = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
@@ -35,9 +35,14 @@ const Register = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('oauth_error') === '1') {
+      setError('Google sign-up failed. Please check Appwrite OAuth settings and try again.');
+    }
+
     const syncOAuthSession = async () => {
       try {
-        const user = await authService.getUser();
+        const user = await authService.handleOAuthCallback();
         localStorage.setItem('user', JSON.stringify(user));
         window.dispatchEvent(new Event('user-update'));
         navigate('/');
@@ -114,9 +119,22 @@ const Register = () => {
     }
   };
 
-  const handleOAuth = (provider) => {
-    const redirectUrl = `${window.location.origin}/register`;
-    authService.signInWithOAuth(provider, redirectUrl, redirectUrl);
+  const handleOAuth = async (provider) => {
+    const successUrl = `${window.location.origin}/register?oauth=1&provider=${encodeURIComponent(provider)}`;
+    const failureUrl = `${window.location.origin}/register?oauth_error=1&provider=${encodeURIComponent(provider)}`;
+
+    setError('');
+
+    try {
+      if (provider === 'google') {
+        await authService.signInWithGoogle(successUrl, failureUrl);
+        return;
+      }
+
+      await authService.signInWithOAuth(provider, successUrl, failureUrl);
+    } catch (err) {
+      setError(getReadableAuthError(err));
+    }
   };
 
   return (
