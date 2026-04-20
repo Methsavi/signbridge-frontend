@@ -18,7 +18,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden transition-opacity"
+          className="fixed inset-0 z-40 transition-opacity bg-black/50 backdrop-blur-sm lg:hidden"
           onClick={toggleSidebar}
         />
       )}
@@ -34,7 +34,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             <div className="p-2 bg-blue-500/10 dark:bg-blue-400/10 rounded-xl">
               <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">
+            <span className="text-xl font-bold text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text">
               SignBridge Admin
             </span>
           </div>
@@ -69,7 +69,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         <div className="p-4 border-t border-slate-200/50 dark:border-slate-800/50">
           <NavLink
             to="/"
-            className="flex items-center gap-3 px-4 py-3 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all duration-200 group"
+            className="flex items-center gap-3 px-4 py-3 text-red-600 transition-all duration-200 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl group"
           >
             <LogOut className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
             <span className="font-medium">Exit Admin</span>

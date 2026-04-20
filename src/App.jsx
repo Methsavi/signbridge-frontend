@@ -21,6 +21,7 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminUserManagement from './pages/admin/UserManagement';
 import AdminManagement from './pages/admin/AdminManagement';
 import AdminSettings from './pages/admin/Settings';
+import AdminLogin from './pages/admin/AdminLogin';
 
 function App() {
   return (
@@ -41,6 +42,7 @@ function App() {
             <Route path="/terms" element={<Terms />} />
             
             {/* Admin Routes */}
+            <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
               <Route path="users" element={<AdminUserManagement />} />
