@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, UserCog, Settings, LogOut, Shield } from 'lucide-react';
+import { LayoutDashboard, Users, UserCog, Settings, LogOut, Shield, MessageSquare } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
@@ -10,6 +10,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     { name: 'Dashboard', path: '/admin', icon: LayoutDashboard, exact: true },
     { name: 'User Management', path: '/admin/users', icon: Users },
     { name: 'Admin Management', path: '/admin/admins', icon: UserCog },
+    { name: 'Feedbacks', path: '/admin/feedbacks', icon: MessageSquare },
     { name: 'Settings', path: '/admin/settings', icon: Settings },
   ];
 

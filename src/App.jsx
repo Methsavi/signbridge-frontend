@@ -22,6 +22,7 @@ import AdminUserManagement from './pages/admin/UserManagement';
 import AdminManagement from './pages/admin/AdminManagement';
 import AdminSettings from './pages/admin/Settings';
 import AdminLogin from './pages/admin/AdminLogin';
+import AdminFeedbacks from './pages/admin/AdminFeedbacks';
 
 function App() {
   return (
@@ -48,6 +49,7 @@ function App() {
               <Route path="users" element={<AdminUserManagement />} />
               <Route path="admins" element={<AdminManagement />} />
               <Route path="settings" element={<AdminSettings />} />
+              <Route path="feedbacks" element={<AdminFeedbacks />} />
             </Route>
 
             {/* Catch-all 404 Route */}

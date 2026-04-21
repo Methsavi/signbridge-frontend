@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Hand, Globe, Mic, ArrowRight, Zap, Heart } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import FeedbackSection from '../components/FeedbackSection';
 import { Link } from 'react-router-dom';
 
 // Floating Icons Configuration
@@ -126,6 +127,10 @@ const Home = () => {
 
           </div>
         </div>
+
+        {/* --- FEEDBACK SECTION --- */}
+        <FeedbackSection />
+
       </main>
 
       <Footer />
