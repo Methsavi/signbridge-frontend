@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, LogIn, AlertCircle } from 'lucide-react';
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import { Mail, Lock, LogIn, AlertCircle, ArrowLeft } from 'lucide-react';
 import { authService, getReadableAuthError } from '../services/api';
 
 const GoogleLogo = () => (
@@ -90,106 +88,211 @@ const Login = () => {
   };
 
   return (
-    <div className="relative flex flex-col min-h-screen text-gray-900 transition-colors duration-300 bg-gray-50 dark:text-white dark:bg-gray-900">
-      {/* Background Blobs moved to absolutely positioned container so they don't affect Navbar styling/positioning */}
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-primary/20 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px]" />
+    <div className="flex min-h-screen bg-gray-900 text-white overflow-hidden">
+
+      {/* ═══════════════════════════════════════════════════════
+          LEFT PANEL — Video Animation
+      ═══════════════════════════════════════════════════════ */}
+      <div className="relative hidden lg:flex lg:w-1/2 xl:w-[55%] flex-col overflow-hidden">
+        {/* Video */}
+        <video
+          className="absolute inset-0 w-full h-full object-cover"
+          src="/LoginAnimation.webm"
+          autoPlay
+          loop
+          muted
+          playsInline
+        />
+
+        {/* Dark gradient overlay so text is readable */}
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/80 via-gray-900/60 to-purple-900/70" />
+
+        {/* Top-left brand */}
+        <div className="relative z-10 p-8">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 text-white/80 hover:text-white transition-colors group"
+          >
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+            <span className="text-sm font-medium">Back to Home</span>
+          </Link>
+        </div>
+
+        {/* Centred branding */}
+        <div className="relative z-10 flex flex-col items-center justify-center flex-1 px-12 text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+          >
+            {/* Logo mark */}
+            <div className="inline-flex items-center justify-center w-20 h-20 mb-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-2xl">
+              <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C13.18 6.04 14 7.7 14 9.5c0 3.5-2.686 6.364-6 6.364a6.318 6.318 0 01-3.334-.958" />
+              </svg>
+            </div>
+
+            <h1 className="text-4xl xl:text-5xl font-extrabold text-white mb-4 leading-tight">
+              Sign<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 to-purple-300">Bridge</span> AI
+            </h1>
+            <p className="text-lg text-white/70 max-w-sm leading-relaxed">
+              Real-time sign language translation powered by advanced computer vision.
+            </p>
+          </motion.div>
+
+          {/* Feature pills */}
+          <motion.div
+            className="flex flex-wrap justify-center gap-3 mt-10"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6, duration: 0.6 }}
+          >
+            {['✋ Real-Time Detection', '🌐 Multi-Language', '🔊 Sign-to-Speech'].map((feat) => (
+              <span
+                key={feat}
+                className="px-4 py-2 rounded-full text-sm font-medium bg-white/10 backdrop-blur-md border border-white/20 text-white/80"
+              >
+                {feat}
+              </span>
+            ))}
+          </motion.div>
+        </div>
+
+        {/* Bottom caption */}
+        <div className="relative z-10 p-8 text-center">
+          <p className="text-white/40 text-xs">© 2026 SignBridge AI. All rights reserved.</p>
+        </div>
       </div>
 
-      <Navbar />
+      {/* ═══════════════════════════════════════════════════════
+          RIGHT PANEL — Login Form
+      ═══════════════════════════════════════════════════════ */}
+      <div className="flex flex-1 items-center justify-center px-6 py-12 bg-gray-50 dark:bg-gray-900 overflow-y-auto">
 
-      <main className="relative z-10 flex items-center justify-center flex-grow px-4 py-12">
+        {/* Mobile: back link */}
+        <div className="absolute top-4 left-4 lg:hidden">
+          <Link to="/" className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-primary transition-colors">
+            <ArrowLeft className="w-4 h-4" />
+            Home
+          </Link>
+        </div>
+
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="relative z-10 w-full max-w-md p-8 space-y-8 transition-colors border border-indigo-100 shadow-2xl bg-indigo-50/90 dark:bg-gray-800/50 dark:border-gray-700 backdrop-blur-lg rounded-2xl"
+          initial={{ opacity: 0, x: 30 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6 }}
+          className="w-full max-w-md"
         >
-          <div className="text-center">
+          {/* Header */}
+          <div className="mb-8">
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              transition={{ type: "spring", stiffness: 260, damping: 20, delay: 0.1 }}
-              className="flex items-center justify-center w-12 h-12 mx-auto mb-4 bg-primary/20 rounded-xl"
+              transition={{ type: 'spring', stiffness: 260, damping: 20, delay: 0.15 }}
+              className="flex items-center justify-center w-14 h-14 mb-5 bg-primary/10 dark:bg-primary/20 rounded-2xl shadow-lg shadow-primary/10"
             >
-              <LogIn className="w-6 h-6 text-primary" />
+              <LogIn className="w-7 h-7 text-primary" />
             </motion.div>
-            <h2 className="text-3xl font-bold tracking-tight">Welcome Back</h2>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              Sign in to access your translation history
+
+            <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+              Welcome back
+            </h2>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              Sign in to access your translation history and more.
             </p>
           </div>
 
-          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-2 p-3 text-sm text-red-200 border rounded-lg bg-red-500/10 border-red-500/50"
-              >
-                <AlertCircle className="w-4 h-4" />
-                {error}
-              </motion.div>
-            )}
+          {/* Error banner */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-2 p-3 mb-5 text-sm text-red-600 dark:text-red-400 border rounded-xl bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30"
+            >
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {error}
+            </motion.div>
+          )}
 
-            <div className="space-y-4">
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                  <Mail className="w-5 h-5 text-gray-500 transition-colors group-focus-within:text-primary" />
+          {/* Form */}
+          <form className="space-y-5" onSubmit={handleSubmit}>
+            {/* Email */}
+            <div className="relative group">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Email address
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+                  <Mail className="w-5 h-5 text-gray-400 group-focus-within:text-primary transition-colors" />
                 </div>
                 <input
                   name="email"
                   type="email"
                   required
-                  className="block w-full py-3 pl-10 pr-3 leading-5 text-gray-900 placeholder-gray-400 transition-all border border-gray-300 rounded-lg bg-white/50 dark:text-gray-100 dark:placeholder-gray-500 dark:border-gray-600 dark:bg-gray-900/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm"
-                  placeholder="Email address"
+                  autoComplete="email"
+                  placeholder="you@example.com"
                   onChange={handleChange}
+                  className="block w-full py-3 pl-11 pr-4 text-sm text-gray-900 dark:text-white placeholder-gray-400 bg-white dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                 />
               </div>
+            </div>
 
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                  <Lock className="w-5 h-5 text-gray-500 transition-colors group-focus-within:text-primary" />
+            {/* Password */}
+            <div className="relative group">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Password
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+                  <Lock className="w-5 h-5 text-gray-400 group-focus-within:text-primary transition-colors" />
                 </div>
                 <input
                   name="password"
                   type="password"
                   required
-                  className="block w-full py-3 pl-10 pr-3 leading-5 text-gray-900 placeholder-gray-400 transition-all border border-gray-300 rounded-lg bg-white/50 dark:text-gray-100 dark:placeholder-gray-500 dark:border-gray-600 dark:bg-gray-900/50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm"
-                  placeholder="Password"
+                  autoComplete="current-password"
+                  placeholder="••••••••"
                   onChange={handleChange}
+                  className="block w-full py-3 pl-11 pr-4 text-sm text-gray-900 dark:text-white placeholder-gray-400 bg-white dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                 />
               </div>
             </div>
 
+            {/* Submit */}
             <button
               type="submit"
               disabled={isLoading}
-              className="relative flex justify-center w-full px-4 py-3 text-sm font-bold text-white transition-all border border-transparent rounded-lg group bg-primary hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-primary disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-sm font-bold text-white rounded-xl bg-primary hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg shadow-primary/30 mt-2"
             >
               {isLoading ? (
                 <div className="w-5 h-5 border-2 rounded-full border-white/30 border-t-white animate-spin" />
               ) : (
-                "Sign In"
+                <>
+                  <LogIn className="w-4 h-4" />
+                  Sign In
+                </>
               )}
             </button>
           </form>
 
-          <div className="space-y-3">
-            <div className="relative text-center">
-              <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                <div className="w-full border-t border-gray-300 dark:border-gray-700" />
-              </div>
-              <span className="relative px-3 text-xs font-semibold tracking-wider text-gray-500 uppercase bg-indigo-50 dark:bg-gray-800">
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center" aria-hidden="true">
+              <div className="w-full border-t border-gray-200 dark:border-gray-700" />
+            </div>
+            <span className="relative flex justify-center">
+              <span className="px-3 text-xs font-semibold tracking-wider text-gray-400 uppercase bg-gray-50 dark:bg-gray-900">
                 Or continue with
               </span>
-            </div>
+            </span>
+          </div>
 
+          {/* OAuth buttons */}
+          <div className="space-y-3">
             <button
               type="button"
               onClick={() => handleOAuth('google')}
-              className="flex items-center justify-center w-full gap-2 px-4 py-3 text-sm font-semibold text-gray-800 transition-colors bg-white border border-gray-300 rounded-lg dark:text-gray-100 dark:bg-gray-900/40 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="flex items-center justify-center w-full gap-3 px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 transition-all"
             >
               <GoogleLogo />
               Sign in with Google
@@ -198,25 +301,24 @@ const Login = () => {
             <button
               type="button"
               onClick={() => handleOAuth('microsoft')}
-              className="flex items-center justify-center w-full gap-2 px-4 py-3 text-sm font-semibold text-gray-800 transition-colors bg-white border border-gray-300 rounded-lg dark:text-gray-100 dark:bg-gray-900/40 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="flex items-center justify-center w-full gap-3 px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 transition-all"
             >
               <MicrosoftLogo />
               Sign in with Microsoft
             </button>
           </div>
 
-          <div className="mt-4 text-center">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Don't have an account?{' '}
-              <Link to="/register" className="font-medium transition-colors text-primary hover:text-indigo-400">
-                Register here
-              </Link>
-            </p>
-          </div>
-        </motion.div>
-      </main>
+          {/* Register link */}
+          <p className="mt-6 text-sm text-center text-gray-500 dark:text-gray-400">
+            Don't have an account?{' '}
+            <Link to="/register" className="font-semibold text-primary hover:text-indigo-400 transition-colors">
+              Create new account
+            </Link>
+          </p>
 
-      <Footer />
+        </motion.div>
+      </div>
+
     </div>
   );
 };
