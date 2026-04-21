@@ -361,6 +361,50 @@ export const adminService = {
   }
 };
 
+export const feedbackService = {
+  // User: submit new feedback
+  submit: async (payload) => {
+    const response = await api.post('/feedbacks/', payload);
+    return response.data;
+  },
+
+  // User: get own feedbacks
+  getMyFeedbacks: async (userId) => {
+    const response = await api.get(`/feedbacks/user/${encodeURIComponent(userId)}`);
+    return response.data;
+  },
+
+  // User: update own feedback
+  update: async (feedbackId, payload) => {
+    const response = await api.put(`/feedbacks/${encodeURIComponent(feedbackId)}`, payload);
+    return response.data;
+  },
+
+  // User: delete own feedback
+  delete: async (feedbackId) => {
+    const response = await api.delete(`/feedbacks/${encodeURIComponent(feedbackId)}`);
+    return response.data;
+  },
+
+  // Admin: list all feedbacks
+  adminList: async (params = {}) => {
+    const response = await api.get('/feedbacks/admin/all', { params });
+    return response.data;
+  },
+
+  // Admin: get stats
+  adminStats: async () => {
+    const response = await api.get('/feedbacks/admin/stats');
+    return response.data;
+  },
+
+  // Admin: delete any feedback
+  adminDelete: async (feedbackId) => {
+    const response = await api.delete(`/feedbacks/${encodeURIComponent(feedbackId)}`);
+    return response.data;
+  },
+};
+
 export { getReadableAuthError };
 
 export default api;
