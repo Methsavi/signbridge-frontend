@@ -84,6 +84,7 @@ export const authService = {
             username,
             email,
             password: `oauth-${user.$id}-google-signbridge`,
+            appwrite_id: user.$id,  // Store Appwrite ID in MongoDB
           });
         } catch (syncError) {
           const detail = syncError?.response?.data?.detail;
@@ -100,11 +101,29 @@ export const authService = {
     }
   },
 
-  // Login
+  // Login — also ensures the user exists in MongoDB (fallback sync)
   login: async (email, password) => {
     try {
       await account.createEmailPasswordSession(email, password);
       const user = await account.get();
+
+      // Fallback sync: if a user verified in Appwrite but MongoDB save failed,
+      // we silently attempt to sync them now. This makes login resilient.
+      try {
+        await api.post('/users/register', {
+          username: user.name || email.split('@')[0],
+          email: user.email,
+          password,          // re-use for MongoDB storage (hashed server-side)
+          appwrite_id: user.$id,
+        });
+      } catch (syncError) {
+        // 400 "Email already registered" is the normal case — user is already in MongoDB
+        const status = syncError?.response?.status;
+        if (status !== 400) {
+          console.warn('Login-time MongoDB sync failed (non-fatal):', syncError?.response?.data?.detail);
+        }
+      }
+
       return normalizeUser(user);
     } catch (error) {
       throw error;
@@ -132,7 +151,6 @@ export const authService = {
   verifyRegistrationOtp: async (userId, otp, fullName, email, password) => {
     try {
       await account.createSession(userId, otp);
-
       const user = await account.get();
 
       await account.updatePrefs({
@@ -142,24 +160,31 @@ export const authService = {
         profile_picture: '',
       });
 
-      // Keep MongoDB users collection in sync with Appwrite-authenticated users.
+      // ─── MANDATORY: Sync to MongoDB ───────────────────────────────────────
+      // This MUST succeed before we consider registration complete.
+      // If it fails (not a duplicate), we kill the Appwrite session and throw
+      // so the user sees an error and can retry.
       try {
-        // Legacy backend schema expects username/email/password.
         await api.post('/users/register', {
           username: fullName,
           email,
           password,
+          appwrite_id: user.$id,  // Store Appwrite user ID in MongoDB
         });
-      } catch {
-        // Fallback for newer schema variants that include explicit full_name/user_id.
-        await api.post('/users/register', {
-          user_id: user.$id,
-          username: fullName,
-          full_name: fullName,
-          email,
-          password,
-        });
+      } catch (syncError) {
+        const detail = syncError?.response?.data?.detail;
+        const status = syncError?.response?.status;
+        // 400 "Email already registered" is fine (user already exists in MongoDB)
+        if (status === 400 && detail === 'Email already registered') {
+          // Already exists — no problem, continue
+        } else {
+          // Real backend error: kill the session and surface the error to user
+          try { await account.deleteSession('current'); } catch { /* ignore */ }
+          const msg = detail || syncError?.message || 'Failed to save account to database. Please try again.';
+          throw new Error(msg);
+        }
       }
+      // ─────────────────────────────────────────────────────────────────────
 
       const refreshedUser = await account.get();
       return normalizeUser(refreshedUser);
