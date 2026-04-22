@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ToastProvider } from './context/ToastContext'; 
 import { ThemeProvider } from './context/ThemeContext';
 
+import ScrollToTop from './components/ScrollToTop';
+
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -30,6 +32,7 @@ function App() {
     <ToastProvider> 
       <ThemeProvider>
         <Router>
+          <ScrollToTop />
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
