@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Star, Send, Edit2, Trash2, X, CheckCircle, MessageSquare } from 'lucide-react';
 import { feedbackService } from '../services/api';
+import Lottie from 'lottie-react';
 
 /* ─── helpers ─────────────────────────────────────────────────── */
 const StarRating = ({ value, onChange, size = 'md', readonly = false }) => {
@@ -41,6 +42,15 @@ const labelForRating = (r) =>
 const FeedbackSection = () => {
   // Current logged-in user from localStorage
   const [currentUser, setCurrentUser] = useState(null);
+
+  const [animationData, setAnimationData] = useState(null);
+
+  useEffect(() => {
+    fetch('/Customer positive review.json')
+      .then((res) => res.json())
+      .then((data) => setAnimationData(data))
+      .catch((err) => console.error('Failed to load animation', err));
+  }, []);
 
   // Form state
   const [rating, setRating] = useState(0);
@@ -299,9 +309,18 @@ const FeedbackSection = () => {
           </h3>
 
           {!currentUser && (
-            <p className="text-gray-500 dark:text-gray-400 text-sm">
-              Login to see and manage your submitted feedbacks.
-            </p>
+            <div className="text-center py-12 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 bg-white/30 dark:bg-gray-800/30">
+              {animationData ? (
+                <div className="w-48 h-48 mx-auto mb-3 opacity-80">
+                  <Lottie animationData={animationData} loop={true} />
+                </div>
+              ) : (
+                <Star className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+              )}
+              <p className="text-gray-500 dark:text-gray-400">
+                Login to see and manage your submitted feedbacks.
+              </p>
+            </div>
           )}
 
           {currentUser && loadingMy && (
@@ -312,7 +331,13 @@ const FeedbackSection = () => {
 
           {currentUser && !loadingMy && myFeedbacks.length === 0 && (
             <div className="text-center py-12 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 bg-white/30 dark:bg-gray-800/30">
-              <Star className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+              {animationData ? (
+                <div className="w-48 h-48 mx-auto mb-3 opacity-80">
+                  <Lottie animationData={animationData} loop={true} />
+                </div>
+              ) : (
+                <Star className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+              )}
               <p className="text-gray-500 dark:text-gray-400">You haven't submitted any feedback yet.</p>
             </div>
           )}

@@ -4,6 +4,7 @@ import { Menu, X, Globe, User, LogOut, ChevronDown, Sun, Moon } from 'lucide-rea
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
 import { authService } from '../services/api';
+import { AnimatedThemeToggler } from './AnimatedThemeToggler';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -91,13 +92,9 @@ const Navbar = () => {
           {/* Right Section (Auth & Theme) */}
           <div className="items-center hidden space-x-4 md:flex ml-auto">
             {/* Theme Toggle Button Desktop */}
-            <button
-              onClick={toggleTheme}
+            <AnimatedThemeToggler
               className="p-2 text-gray-500 transition-colors rounded-full dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none"
-              aria-label="Toggle Dark Mode"
-            >
-              {theme === 'dark' ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-gray-700" />}
-            </button>
+            />
 
             {/* AUTH SECTION */}
             {user ? (
@@ -152,7 +149,7 @@ const Navbar = () => {
                 <Link to="/login" className="px-5 py-2 text-sm font-medium text-gray-700 transition-colors border border-gray-200 rounded-full dark:text-gray-300 hover:text-gray-900 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:text-white">
                   Sign In
                 </Link>
-                <Link to="/register" className="px-5 py-2 text-sm font-bold text-white transition-transform transform rounded-full shadow-lg bg-primary hover:bg-indigo-600 hover:scale-105 shadow-indigo-500/30">
+                <Link to="/register" className="px-5 py-2 text-sm font-bold text-white transition-transform transform rounded-full shadow-lg animate-gradient bg-gradient-to-r from-primary via-purple-500 to-primary bg-[length:300%_100%] hover:scale-105 shadow-primary/30">
                   Sign Up
                 </Link>
               </div>
@@ -161,13 +158,9 @@ const Navbar = () => {
 
           {/* Mobile Button and Theme Toggle */}
           <div className="flex items-center gap-4 md:hidden">
-            <button
-              onClick={toggleTheme}
+            <AnimatedThemeToggler
               className="p-2 text-gray-500 transition-colors rounded-full dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none"
-              aria-label="Toggle Dark Mode"
-            >
-              {theme === 'dark' ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-gray-700" />}
-            </button>
+            />
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white focus:outline-none"

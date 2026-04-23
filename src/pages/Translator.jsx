@@ -299,9 +299,9 @@ const Translator = () => {
                   <div className="absolute left-0 right-0 z-20 flex justify-center bottom-6">
                     <button
                       onClick={toggleRecording}
-                      className={`flex items-center gap-3 px-8 py-4 rounded-full font-bold shadow-2xl transition-all duration-300 ${isRecording
-                        ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/40 ring-4 ring-red-500/20'
-                        : 'bg-primary hover:bg-indigo-600 text-white shadow-primary/40 ring-4 ring-primary/20'
+                      className={`flex items-center gap-3 px-8 py-4 rounded-full font-bold shadow-2xl transition-all duration-300 text-white ${isRecording
+                        ? 'bg-red-500 hover:bg-red-600 shadow-red-500/40 ring-4 ring-red-500/20'
+                        : 'animate-gradient bg-gradient-to-r from-primary via-purple-500 to-primary bg-[length:300%_100%] shadow-primary/40 ring-4 ring-primary/20 hover:shadow-primary/60'
                         }`}
                     >
                       {isRecording ? <><StopCircle size={22} /> Stop Translation</> : <><Camera size={22} /> Start Signing</>}
