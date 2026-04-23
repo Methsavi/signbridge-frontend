@@ -460,7 +460,7 @@ const Register = () => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-sm font-bold text-white rounded-xl bg-primary hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg shadow-primary/30"
+                className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-sm font-bold text-white rounded-xl animate-gradient bg-gradient-to-r from-primary via-purple-500 to-primary bg-[length:300%_100%] focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg shadow-primary/30 hover:shadow-primary/50"
               >
                 {isLoading ? (
                   <div className="w-5 h-5 border-2 rounded-full border-white/30 border-t-white animate-spin" />

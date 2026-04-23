@@ -11,6 +11,7 @@ import TabAppearance from '../components/profile/TabAppearance';
 import TabSecurity from '../components/profile/TabSecurity';
 import TabHistory from '../components/profile/TabHistory';
 import TabHelp from '../components/profile/TabHelp';
+import { AnimatedThemeToggler } from '../components/AnimatedThemeToggler';
 
 const NAV_ITEMS = [
   { id: 'profile', icon: User, label: 'Profile' },
@@ -190,13 +191,9 @@ const Profile = () => {
 
           {/* Right: theme & avatar on mobile */}
           <div className="md:hidden flex items-center gap-3">
-            <button
-              onClick={toggleTheme}
+            <AnimatedThemeToggler
               className="p-2 text-gray-500 transition-colors rounded-full dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none"
-              aria-label="Toggle Dark Mode"
-            >
-              {theme === 'dark' ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4 text-gray-700" />}
-            </button>
+            />
             {user.profile_picture ? (
               <img src={user.profile_picture} alt="avatar"
                 className="w-9 h-9 rounded-full object-cover ring-2 ring-primary/30 shadow" />
@@ -209,13 +206,9 @@ const Profile = () => {
 
           {/* Right: theme, stats, user on desktop */}
           <div className="hidden md:flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-            <button
-              onClick={toggleTheme}
+            <AnimatedThemeToggler
               className="p-2 text-gray-500 transition-colors rounded-full dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none"
-              aria-label="Toggle Dark Mode"
-            >
-              {theme === 'dark' ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4 text-gray-700" />}
-            </button>
+            />
             <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
             <span className="flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-primary" />

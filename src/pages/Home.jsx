@@ -82,10 +82,10 @@ const Home = () => {
               {/* Button 1: Goes to Translator */}
               <Link 
                 to="/translator" 
-                className="flex items-center gap-2 px-8 py-4 text-lg font-bold text-white transition-all rounded-full shadow-lg bg-primary hover:bg-indigo-600 group"
+                className="group relative flex items-center justify-center gap-2 px-8 py-4 text-lg font-bold text-white transition-all duration-300 ease-in-out rounded-full shadow-xl shadow-primary/30 hover:shadow-primary/50 hover:scale-105 animate-gradient bg-gradient-to-r from-primary via-purple-500 to-primary bg-[length:300%_100%]"
               >
                 Start Translating
-                <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1 text-white" />
               </Link>
               
               {/* Button 2: Goes to Dictionary */}
