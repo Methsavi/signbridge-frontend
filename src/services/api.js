@@ -432,4 +432,40 @@ export const feedbackService = {
 
 export { getReadableAuthError };
 
+export const dictionaryService = {
+  // Upload an image or video file, returns { url, media_type }
+  uploadMedia: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/dictionary/upload-media', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  // Fetch all entries (optional: category filter & search)
+  getEntries: async (params = {}) => {
+    const response = await api.get('/dictionary/', { params });
+    return response.data; // { items, count }
+  },
+
+  // Create a new entry (after media is uploaded)
+  createEntry: async (payload) => {
+    const response = await api.post('/dictionary/', payload);
+    return response.data;
+  },
+
+  // Update an existing entry
+  updateEntry: async (id, payload) => {
+    const response = await api.put(`/dictionary/${encodeURIComponent(id)}`, payload);
+    return response.data;
+  },
+
+  // Delete an entry
+  deleteEntry: async (id) => {
+    const response = await api.delete(`/dictionary/${encodeURIComponent(id)}`);
+    return response.data;
+  },
+};
+
 export default api;
