@@ -45,6 +45,8 @@ const Translator = () => {
   const [sourceLang, setSourceLang] = useState('auto');
 
   const [saveStatus, setSaveStatus] = useState(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const isSpeakingRef = useRef(false);
 
   const [activePanel, setActivePanel] = useState(null);
   const [historyItems, setHistoryItems] = useState([]);
@@ -76,15 +78,39 @@ const Translator = () => {
   const WORD_DEDUP_MS = 2000; // ignore same word within 2 seconds
 
   // ─────────────────────────────────────────────────────────────────
-  // SPEAK
+  // SPEAK  — Google Cloud TTS with browser speechSynthesis fallback
   // ─────────────────────────────────────────────────────────────────
-  const speakText = useCallback((text) => {
-    if (!text || text === '...') return;
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-    }
+  const browserFallback = useCallback((text) => {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.onend = () => { isSpeakingRef.current = false; setIsSpeaking(false); };
+    utt.onerror = () => { isSpeakingRef.current = false; setIsSpeaking(false); };
+    window.speechSynthesis.speak(utt);
   }, []);
+
+  const speakText = useCallback(async (text) => {
+    if (!text || text === '...' || isSpeakingRef.current) return;
+    isSpeakingRef.current = true;
+    setIsSpeaking(true);
+    try {
+      const blob = await featureService.tts(text, targetLang);
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => { URL.revokeObjectURL(url); isSpeakingRef.current = false; setIsSpeaking(false); };
+      audio.onerror = () => { URL.revokeObjectURL(url); isSpeakingRef.current = false; setIsSpeaking(false); };
+      audio.play();
+    } catch (err) {
+      // Unsupported language or service not configured → fall back to browser TTS
+      if (err?.fallback) {
+        browserFallback(text);
+      } else {
+        console.error('TTS error:', err);
+        isSpeakingRef.current = false;
+        setIsSpeaking(false);
+      }
+    }
+  }, [targetLang, browserFallback]);
 
   // ─────────────────────────────────────────────────────────────────
   // DRAW HAND LANDMARKS
@@ -606,26 +632,26 @@ const Translator = () => {
           <div className="flex flex-col gap-4">
 
             {/* Language selectors */}
-            <div
-              className={`flex flex-col gap-4 p-4 sm:p-5 bg-white border shadow-sm rounded-2xl transition-all duration-300
-                ${(mode === 'camera' && signMode === 'number')
-                  ? 'hidden'
-                  : 'border-gray-200 dark:bg-[#1e293b] dark:border-gray-700/30'}`}
-            >
-              <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                <span className="text-sm font-bold text-gray-700 dark:text-gray-300 shrink-0">From:</span>
-                <div className="w-full sm:w-64">
-                  {mode === 'camera' ? (
-                    <div className="flex items-center w-full px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-xl dark:bg-[#334155] dark:text-gray-300 dark:border-gray-600/50">
-                      American Sign Language (ASL)
-                    </div>
-                  ) : (
-                    <LanguageSelector selectedLang={sourceLang} onChange={setSourceLang} includeAuto={true} />
-                  )}
+            <div className="flex flex-col gap-4 p-4 sm:p-5 bg-white border border-gray-200 shadow-sm rounded-2xl dark:bg-[#1e293b] dark:border-gray-700/30">
+              {/* From row — hidden in number mode (numbers are language-agnostic) */}
+              {!(mode === 'camera' && signMode === 'number') && (
+                <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                  <span className="text-sm font-bold text-gray-700 dark:text-gray-300 shrink-0">From:</span>
+                  <div className="w-full sm:w-64">
+                    {mode === 'camera' ? (
+                      <div className="flex items-center w-full px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-xl dark:bg-[#334155] dark:text-gray-300 dark:border-gray-600/50">
+                        American Sign Language (ASL)
+                      </div>
+                    ) : (
+                      <LanguageSelector selectedLang={sourceLang} onChange={setSourceLang} includeAuto={true} />
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                <span className="text-sm font-bold text-gray-700 dark:text-gray-300 shrink-0">To:</span>
+                <span className="text-sm font-bold text-gray-700 dark:text-gray-300 shrink-0">
+                  {mode === 'camera' && signMode === 'number' ? 'Speak Language:' : 'To:'}
+                </span>
                 <div className="w-full sm:w-64">
                   <LanguageSelector selectedLang={targetLang} onChange={setTargetLang} includeAuto={false} />
                 </div>
@@ -707,12 +733,16 @@ const Translator = () => {
                   <h2 className="text-xs font-bold tracking-widest text-gray-500 uppercase dark:text-gray-400/80">
                     Translation Result
                   </h2>
-                  {translatedText && translatedText !== '...' && (
+                  {((mode === 'camera' && signMode === 'number') ? inputText : (translatedText && translatedText !== '...')) && (
                     <button
-                      onClick={() => speakText(translatedText)}
-                      className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-full transition-colors"
+                      onClick={() => speakText(mode === 'camera' && signMode === 'number' ? inputText : translatedText)}
+                      disabled={isSpeaking}
+                      className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Volume2 size={12} /> Speak again
+                      {isSpeaking
+                        ? <><Loader2 size={12} className="animate-spin" /> Speaking…</>
+                        : <><Volume2 size={12} /> Speak again</>
+                      }
                     </button>
                   )}
                 </div>
@@ -727,17 +757,18 @@ const Translator = () => {
             {/* Action buttons */}
             <div className="grid grid-cols-4 gap-2 sm:gap-3">
               {[
-                { label: 'Speak', icon: Volume2, onClick: () => speakText(translatedText), style: '' },
+                { label: isSpeaking ? 'Speaking…' : 'Speak', icon: isSpeaking ? Loader2 : Volume2, onClick: () => speakText(mode === 'camera' && signMode === 'number' ? inputText : translatedText), style: '', loading: isSpeaking },
                 { label: 'Backspace', icon: Delete, onClick: () => { setInputText(p => p.slice(0, -1)); setIsFavorited(false); }, style: '' },
                 { label: 'Space', icon: Keyboard, onClick: () => { setInputText(p => p + ' '); setIsFavorited(false); }, style: '' },
                 { label: 'Clear', icon: Trash2, onClick: clearAll, style: 'text-red-500 bg-red-50 border-red-100 dark:bg-[#341b25] dark:border-[#52212d] dark:text-[#f87171]' },
-              ].map(({ label, icon: Icon, onClick, style }) => (
+              ].map(({ label, icon: Icon, onClick, style, loading }) => (
                 <button
                   key={label}
                   onClick={onClick}
-                  className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 p-3 rounded-xl border transition-colors hover:brightness-110 ${style || 'text-gray-700 bg-white border-gray-200 dark:text-white dark:bg-[#334155] dark:border-transparent'}`}
+                  disabled={loading}
+                  className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 p-3 rounded-xl border transition-colors hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed ${style || 'text-gray-700 bg-white border-gray-200 dark:text-white dark:bg-[#334155] dark:border-transparent'}`}
                 >
-                  <Icon size={16} className="sm:w-[18px] sm:h-[18px] shrink-0" />
+                  <Icon size={16} className={`sm:w-[18px] sm:h-[18px] shrink-0 ${loading ? 'animate-spin' : ''}`} />
                   <span className="text-[10px] sm:text-xs font-medium leading-tight text-center">{label}</span>
                 </button>
               ))}

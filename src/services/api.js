@@ -284,12 +284,37 @@ export const authService = {
 
 export const featureService = {
   translate: async (text, targetLang, sourceLang = 'auto') => {
-    const response = await api.post('/features/translate', { 
-      text, 
+    const response = await api.post('/features/translate', {
+      text,
       target_lang: targetLang,
       source_lang: sourceLang
     });
     return response.data;
+  },
+
+  // Calls Google Cloud TTS via the backend and returns an audio Blob (MP3).
+  // Throws with { fallback: true } when the language is unsupported so the
+  // caller can degrade gracefully to browser speechSynthesis.
+  tts: async (text, languageCode = 'en') => {
+    try {
+      const response = await api.post(
+        '/features/tts',
+        { text, language_code: languageCode },
+        { responseType: 'blob', timeout: 20000 }
+      );
+      return response.data;
+    } catch (err) {
+      const status = err?.response?.status;
+      // 422 = language not supported by Google TTS → tell caller to fall back
+      if (status === 422 || status === 503) {
+        const fallbackErr = new Error(
+          status === 422 ? `Language '${languageCode}' not supported by Google TTS` : 'TTS service not configured'
+        );
+        fallbackErr.fallback = true;
+        throw fallbackErr;
+      }
+      throw err;
+    }
   },
 
   saveHistory: async (userId, original, translated, lang, mode = 'word', sourceLang = 'sign') => {
