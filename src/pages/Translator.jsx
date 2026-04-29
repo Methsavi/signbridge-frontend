@@ -1,31 +1,52 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, StopCircle, Volume2, Trash2, Globe, Keyboard, Video, CheckCircle, Save, Delete, Type, Hash, MessageSquare, Heart, Clock, X, Star, Lightbulb } from 'lucide-react';
+import {
+  Camera, StopCircle, Volume2, Trash2, Keyboard, Video,
+  CheckCircle, Delete, Type, Hash, MessageSquare, Heart,
+  Clock, X, Star, Lightbulb, Loader2, RotateCcw
+} from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { featureService } from '../services/api';
 import LanguageSelector from '../components/LanguageSelector';
 
+// ─────────────────────────────────────────────────────────────────────
+// CONFIDENCE DOTS — visual, readable without text literacy
+// ─────────────────────────────────────────────────────────────────────
+const ConfidenceDots = ({ confidence }) => {
+  const filled = Math.round(confidence * 5);
+  return (
+    <div className="flex items-center gap-0.5">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div
+          key={i}
+          className={`w-2 h-2 rounded-full transition-all duration-300 ${i < filled
+              ? filled >= 4 ? 'bg-green-300' : filled >= 3 ? 'bg-yellow-300' : 'bg-orange-300'
+              : 'bg-white/30'
+            }`}
+        />
+      ))}
+    </div>
+  );
+};
+
 const Translator = () => {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
 
-  // State
   const [mode, setMode] = useState('camera');
   const [signMode, setSignMode] = useState('word');
   const [isRecording, setIsRecording] = useState(false);
-  const [inputText, setInputText] = useState("");
-  const [translatedText, setTranslatedText] = useState("...");
+  const [inputText, setInputText] = useState('');
+  const [translatedText, setTranslatedText] = useState('...');
 
   const [targetLang, setTargetLang] = useState('si');
   const [sourceLang, setSourceLang] = useState('auto');
 
-  const [isAutoSpeak, setIsAutoSpeak] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
 
-  // Panel state
-  const [activePanel, setActivePanel] = useState(null); // 'history' | 'favorites' | null
+  const [activePanel, setActivePanel] = useState(null);
   const [historyItems, setHistoryItems] = useState([]);
   const [favorites, setFavorites] = useState(() => {
     try { return JSON.parse(localStorage.getItem('sb_favorites') || '[]'); } catch { return []; }
@@ -34,81 +55,167 @@ const Translator = () => {
   const [panelLoading, setPanelLoading] = useState(false);
   const [showTips, setShowTips] = useState(false);
 
-  // Sentence Building Refs
+  // ── Word mode state ───────────────────────────────────────────────
+  const [wordFlash, setWordFlash] = useState(null);   // {word, confidence} shown on camera
+  const [wordAlternatives, setWordAlternatives] = useState([]); // [{word, confidence}] shown in corner
+  const [isCollecting, setIsCollecting] = useState(false);
+  const [collectingFrames, setCollectingFrames] = useState(0);
+  const [lastWord, setLastWord] = useState(null);   // for undo
+  const wordFlashTimer = useRef(null);
+
   const socketRef = useRef(null);
   const intervalRef = useRef(null);
-  const lastSavedRef = useRef("");
-  const signModeRef = useRef("word");
+  const lastSavedRef = useRef('');
+  const signModeRef = useRef('word');
+  const modeRef = useRef('camera');
+  const pendingSaveRef = useRef(null); // { original, translated, lang, mode, source }
+  const autoSaveTimerRef = useRef(null);
+  // Track last committed word to prevent duplicates within a short window
+  const lastCommittedRef = useRef(null);
+  const lastCommittedTimeRef = useRef(0);
+  const WORD_DEDUP_MS = 2000; // ignore same word within 2 seconds
 
-  // --- DRAWING FUNCTION FOR HAND LANDMARKS ---
+  // ─────────────────────────────────────────────────────────────────
+  // SPEAK
+  // ─────────────────────────────────────────────────────────────────
+  const speakText = useCallback((text) => {
+    if (!text || text === '...') return;
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    }
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────
+  // DRAW HAND LANDMARKS
+  // ─────────────────────────────────────────────────────────────────
   const drawHand = (landmarks) => {
     const canvas = canvasRef.current;
     const video = webcamRef.current?.video;
     if (!canvas || !video || video.readyState < 2) return;
-
-    // Ensure the canvas internal resolution matches the actual video feed
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
     const connections = [
-      [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
-      [0, 5], [5, 6], [6, 7], [7, 8], // Index
-      [5, 9], [9, 10], [10, 11], [11, 12], // Middle
-      [9, 13], [13, 14], [14, 15], [15, 16], // Ring
-      [13, 17], [0, 17], [17, 18], [18, 19], [19, 20] // Pinky & Palm base
+      [0, 1], [1, 2], [2, 3], [3, 4],
+      [0, 5], [5, 6], [6, 7], [7, 8],
+      [5, 9], [9, 10], [10, 11], [11, 12],
+      [9, 13], [13, 14], [14, 15], [15, 16],
+      [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]
     ];
-
-    ctx.strokeStyle = "#00FF00"; // Neon Green Lines
+    ctx.strokeStyle = '#00FF00';
     ctx.lineWidth = 4;
-    ctx.fillStyle = "#FF0000"; // Red Joints
-
-    connections.forEach(([startIdx, endIdx]) => {
-      const startPoint = landmarks[startIdx];
-      const endPoint = landmarks[endIdx];
+    ctx.fillStyle = '#FF0000';
+    connections.forEach(([s, e]) => {
+      const sp = landmarks[s], ep = landmarks[e];
       ctx.beginPath();
-      // Mirroring adjustment
-      ctx.moveTo((1 - startPoint.x) * canvas.width, startPoint.y * canvas.height);
-      ctx.lineTo((1 - endPoint.x) * canvas.width, endPoint.y * canvas.height);
+      ctx.moveTo((1 - sp.x) * canvas.width, sp.y * canvas.height);
+      ctx.lineTo((1 - ep.x) * canvas.width, ep.y * canvas.height);
       ctx.stroke();
     });
-
-    landmarks.forEach((point) => {
+    landmarks.forEach((pt) => {
       ctx.beginPath();
-      ctx.arc((1 - point.x) * canvas.width, point.y * canvas.height, 5, 0, 2 * Math.PI);
+      ctx.arc((1 - pt.x) * canvas.width, pt.y * canvas.height, 5, 0, 2 * Math.PI);
       ctx.fill();
     });
   };
 
-  // --- SENTENCE BUILDER LOGIC ---
-  const processStableSign = (sign) => {
+  // ─────────────────────────────────────────────────────────────────
+  // APPEND WORD — single source of truth, deduplication built in
+  // ─────────────────────────────────────────────────────────────────
+  const appendWord = useCallback((word) => {
+    const now = Date.now();
+    // Deduplicate: ignore if same word committed within WORD_DEDUP_MS
+    if (
+      word === lastCommittedRef.current &&
+      now - lastCommittedTimeRef.current < WORD_DEDUP_MS
+    ) return;
+
+    lastCommittedRef.current = word;
+    lastCommittedTimeRef.current = now;
+    setLastWord(word);
+
     setInputText(prev => {
-      if (sign.toLowerCase() === "space") return prev + " ";
-      if (sign.toLowerCase() === "del" || sign.toLowerCase() === "delete") return prev.slice(0, -1);
-      
-      // Auto-append spaces in word mode
+      if (word.toLowerCase() === 'space') return prev + ' ';
+      if (word.toLowerCase() === 'del' || word.toLowerCase() === 'delete') return prev.slice(0, -1);
       if (signModeRef.current === 'word' && prev.length > 0 && !prev.endsWith(' ')) {
-        return prev + ' ' + sign;
+        return prev + ' ' + word;
       }
-      return prev + sign;
+      return prev + word;
     });
     setIsFavorited(false);
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────
+  // UNDO LAST WORD
+  // ─────────────────────────────────────────────────────────────────
+  const undoLastWord = () => {
+    if (!lastWord) return;
+    setInputText(prev => {
+      const trimmed = prev.trimEnd();
+      if (trimmed.endsWith(lastWord)) {
+        return trimmed.slice(0, trimmed.length - lastWord.length).trimEnd();
+      }
+      return prev.slice(0, -1);
+    });
+    setLastWord(null);
+    setWordFlash(null);
+    setWordAlternatives([]);
+    lastCommittedRef.current = null;
+    lastCommittedTimeRef.current = 0;
   };
 
-  const handleTranslate = async (text) => {
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+
+  // ─────────────────────────────────────────────────────────────────
+  // SAVE — must be defined before handleTranslate (used in its body/deps)
+  // ─────────────────────────────────────────────────────────────────
+  const saveCurrentSession = useCallback(async () => {
+    const p = pendingSaveRef.current;
+    if (!p || !p.original || p.translated === '...' || p.original === lastSavedRef.current) return;
+    const userStr = localStorage.getItem('user');
+    if (!userStr) return;
+    const user = JSON.parse(userStr);
+    lastSavedRef.current = p.original;
+    if (autoSaveTimerRef.current) { clearTimeout(autoSaveTimerRef.current); autoSaveTimerRef.current = null; }
+    try {
+      setSaveStatus('saving');
+      await featureService.saveHistory(user.user_id, p.original, p.translated, p.lang, p.mode, p.source);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(null), 2000);
+    } catch { setSaveStatus('error'); }
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────
+  // TRANSLATION
+  // ─────────────────────────────────────────────────────────────────
+  const handleTranslate = useCallback(async (text) => {
     if (!text) return;
     try {
       const result = await featureService.translate(text, targetLang, sourceLang);
       setTranslatedText(result.translated);
       setIsFavorited(false);
-      if (isAutoSpeak) speakText(result.translated);
-      autoSaveHistory(text, result.translated, targetLang);
-    } catch (err) {
-      console.error("Translation error", err);
+      speakText(result.translated);
+      pendingSaveRef.current = {
+        original: text,
+        translated: result.translated,
+        lang: targetLang,
+        mode: modeRef.current === 'camera' ? signModeRef.current : 'text',
+        source: modeRef.current === 'camera' ? 'sign' : sourceLang,
+      };
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = setTimeout(saveCurrentSession, 5 * 60 * 1000);
+    } catch (err) { console.error('Translation error', err); }
+  }, [targetLang, sourceLang, speakText, saveCurrentSession]);
+
+  // Debounce translation in text mode
+  useEffect(() => {
+    if (mode === 'text' && inputText) {
+      const id = setTimeout(() => handleTranslate(inputText), 800);
+      return () => clearTimeout(id);
     }
-  };
+  }, [inputText, targetLang, sourceLang]);
 
   const openPanel = async (panel) => {
     if (activePanel === panel) { setActivePanel(null); return; }
@@ -120,12 +227,7 @@ const Translator = () => {
         if (userStr) {
           const user = JSON.parse(userStr);
           const items = await featureService.getHistory(user.user_id);
-          const sortedItems = items.sort((a, b) => {
-            const dateA = new Date(a.created_at || a.created || 0).getTime();
-            const dateB = new Date(b.created_at || b.created || 0).getTime();
-            return dateB - dateA; // Descending (newest first)
-          });
-          setHistoryItems(sortedItems);
+          setHistoryItems(items.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)));
         }
       } catch (e) { console.error(e); }
       setPanelLoading(false);
@@ -137,79 +239,26 @@ const Translator = () => {
     const item = { id: Date.now(), original: inputText, translated: translatedText, lang: targetLang, date: new Date().toISOString() };
     if (isFavorited) {
       const updated = favorites.filter(f => f.original !== inputText || f.translated !== translatedText);
-      setFavorites(updated);
-      localStorage.setItem('sb_favorites', JSON.stringify(updated));
-      setIsFavorited(false);
+      setFavorites(updated); localStorage.setItem('sb_favorites', JSON.stringify(updated)); setIsFavorited(false);
     } else {
       const updated = [item, ...favorites];
-      setFavorites(updated);
-      localStorage.setItem('sb_favorites', JSON.stringify(updated));
-      setIsFavorited(true);
+      setFavorites(updated); localStorage.setItem('sb_favorites', JSON.stringify(updated)); setIsFavorited(true);
     }
   };
 
-  const removeFavorite = (id) => {
-    const updated = favorites.filter(f => f.id !== id);
-    setFavorites(updated);
-    localStorage.setItem('sb_favorites', JSON.stringify(updated));
-  };
+  const removeFavorite = (id) => { const u = favorites.filter(f => f.id !== id); setFavorites(u); localStorage.setItem('sb_favorites', JSON.stringify(u)); };
+  const applyHistoryItem = (item) => { setInputText(item.original_text); setTranslatedText(item.translated_text); setActivePanel(null); };
+  const applyFavorite = (item) => { setInputText(item.original); setTranslatedText(item.translated); setActivePanel(null); };
 
-  const applyHistoryItem = (item) => {
-    setInputText(item.original_text);
-    setTranslatedText(item.translated_text);
-    setActivePanel(null);
-  };
-
-  const applyFavorite = (item) => {
-    setInputText(item.original);
-    setTranslatedText(item.translated);
-    setActivePanel(null);
-  };
-
-  const autoSaveHistory = async (original, translated, lang) => {
-    const userStr = localStorage.getItem('user');
-    if (!userStr) return;
-    const user = JSON.parse(userStr);
-    if (original === lastSavedRef.current) return;
-    lastSavedRef.current = original;
-
-    try {
-      setSaveStatus('saving');
-      const currentMode = mode === 'camera' ? signModeRef.current : 'text';
-      const currentSource = mode === 'camera' ? 'sign' : sourceLang;
-      await featureService.saveHistory(user.user_id, original, translated, lang, currentMode, currentSource);
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus(null), 2000);
-    } catch (err) {
-      setSaveStatus('error');
-    }
-  };
-
-  useEffect(() => {
-    if (mode === 'text' && inputText) {
-      const timeoutId = setTimeout(() => handleTranslate(inputText), 800);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [inputText, targetLang, sourceLang]);
-
-  // --- WEBSOCKET CONTROL ---
-  const startTranslation = () => {
-    setIsRecording(true);
-    // Note: We don't start the socket here anymore. 
-    // We wait for the Webcam "onUserMedia" event to ensure the camera is ON first.
-  };
-
-  // NEW: This function starts the socket ONLY when the camera is actually ready
+  // ─────────────────────────────────────────────────────────────────
+  // WEBSOCKET
+  // ─────────────────────────────────────────────────────────────────
   const initSocket = () => {
     if (socketRef.current) socketRef.current.close();
     if (intervalRef.current) clearInterval(intervalRef.current);
 
     const currentMode = signModeRef.current;
-    console.log(`🎥 Camera is ready. Opening WebSocket for ${currentMode} mode...`);
-    
-    // Choose endpoint based on signMode
-    const endpoint = `/ws/predict/${currentMode}`;
-    socketRef.current = new WebSocket(`${import.meta.env.VITE_WS_URL}${endpoint}`);
+    socketRef.current = new WebSocket(`${import.meta.env.VITE_WS_URL}/ws/predict/${currentMode}`);
 
     socketRef.current.onopen = () => {
       intervalRef.current = setInterval(() => {
@@ -222,117 +271,189 @@ const Translator = () => {
 
     socketRef.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      
-      // Only append letter when model says it's committed
-      if (data.committed && data.sign && data.sign !== "..." && data.sign !== "Nothing") {
-        processStableSign(data.sign);
+
+      // ── WORD MODE ─────────────────────────────────────────────────
+      if (currentMode === 'word') {
+        if (data.collecting) {
+          setIsCollecting(true);
+          setCollectingFrames(data.frames || 0);
+          // Clear flash while collecting next sign
+          setWordFlash(null);
+          setWordAlternatives([]);
+        }
+
+        if (data.ready && data.top3 && data.top3.length > 0) {
+          setIsCollecting(false);
+          setCollectingFrames(0);
+
+          const best = data.top3[0];
+          const rest = data.top3.slice(1);
+
+          // ── Append word ONCE via appendWord (dedup protected) ─────
+          appendWord(best.word);
+
+          // Show flash on camera
+          setWordFlash({ word: best.word, confidence: best.confidence });
+          setWordAlternatives(rest);
+
+          // Clear flash after 2.5s
+          if (wordFlashTimer.current) clearTimeout(wordFlashTimer.current);
+          wordFlashTimer.current = setTimeout(() => {
+            setWordFlash(null);
+            setWordAlternatives([]);
+          }, 2500);
+
+          // Translate — use functional form to get latest inputText
+          setInputText(prev => {
+            const next = prev.length > 0 && !prev.endsWith(' ')
+              ? prev + ' ' + best.word
+              : prev + best.word;
+            // Only translate once — compare with what appendWord already set
+            // We don't re-append here, just compute next for translate
+            setTimeout(() => handleTranslate(next), 300);
+            return prev; // DON'T change state here — appendWord already did it
+          });
+        }
+
+        if (!data.collecting && !data.ready) {
+          setIsCollecting(false);
+          setCollectingFrames(0);
+        }
+
+        // ── ALPHABET / NUMBER MODE ────────────────────────────────────
+      } else {
+        if (data.committed && data.sign && data.sign !== '...' && data.sign !== 'Nothing') {
+          appendWord(data.sign);
+        }
       }
 
       if (data.landmarks) {
         drawHand(data.landmarks);
       } else {
         const canvas = canvasRef.current;
-        if (canvas) canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+        if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
       }
     };
   };
 
   const handleSignModeChange = (newMode) => {
     if (signMode === newMode) return;
+    saveCurrentSession();
+    if (autoSaveTimerRef.current) { clearTimeout(autoSaveTimerRef.current); autoSaveTimerRef.current = null; }
+    pendingSaveRef.current = null;
+    lastSavedRef.current = '';
     setSignMode(newMode);
     signModeRef.current = newMode;
-    setInputText("");
-    setTranslatedText("...");
-    setIsFavorited(false);
-    if (isRecording && webcamRef.current?.video?.readyState === 4) {
-      initSocket();
-    }
+    setInputText(''); setTranslatedText('...'); setIsFavorited(false);
+    setWordFlash(null); setWordAlternatives([]); setIsCollecting(false);
+    setCollectingFrames(0); setLastWord(null);
+    lastCommittedRef.current = null; lastCommittedTimeRef.current = 0;
+    if (isRecording && webcamRef.current?.video?.readyState === 4) initSocket();
   };
 
-  const stopTranslation = () => {
+  const stopTranslation = (shouldSave = false) => {
     setIsRecording(false);
     if (socketRef.current) socketRef.current.close();
     if (intervalRef.current) clearInterval(intervalRef.current);
     const canvas = canvasRef.current;
-    if (canvas) canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-    handleTranslate(inputText);
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    setWordFlash(null); setWordAlternatives([]); setIsCollecting(false); setCollectingFrames(0);
+    if (shouldSave) saveCurrentSession();
   };
 
-  const toggleRecording = () => isRecording ? stopTranslation() : startTranslation();
+  const toggleRecording = () => isRecording ? stopTranslation(true) : setIsRecording(true);
 
-  const speakText = (text) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  const clearAll = () => {
+    saveCurrentSession();
+    if (autoSaveTimerRef.current) { clearTimeout(autoSaveTimerRef.current); autoSaveTimerRef.current = null; }
+    pendingSaveRef.current = null;
+    lastSavedRef.current = '';
+    setTranslatedText('...'); setInputText(''); setIsFavorited(false);
+    setWordFlash(null); setWordAlternatives([]); setLastWord(null);
+    lastCommittedRef.current = null; lastCommittedTimeRef.current = 0;
+  };
+
+  // Translate when inputText changes in word/alphabet/number mode (debounced)
+  const translateDebounceRef = useRef(null);
+  useEffect(() => {
+    if (mode === 'camera' && inputText) {
+      if (translateDebounceRef.current) clearTimeout(translateDebounceRef.current);
+      translateDebounceRef.current = setTimeout(() => handleTranslate(inputText), 600);
     }
-  };
+  }, [inputText]);
 
+  // Save on page leave (browser close/refresh) and component unmount (SPA navigation)
+  useEffect(() => {
+    window.addEventListener('beforeunload', saveCurrentSession);
+    return () => {
+      saveCurrentSession();
+      window.removeEventListener('beforeunload', saveCurrentSession);
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [saveCurrentSession]);
+
+  // ─────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col min-h-screen text-gray-900 bg-gray-50 dark:text-white dark:bg-gray-900 transition-colors duration-300">
+    <div className="flex flex-col min-h-screen text-gray-900 transition-colors duration-300 bg-gray-50 dark:text-white dark:bg-gray-900">
       <Navbar />
       <main className="flex-grow p-4 md:p-8">
         <div className="grid grid-cols-1 gap-8 mx-auto max-w-7xl lg:grid-cols-2">
 
-          <div className="flex flex-col gap-6">
+          {/* ══════════════════════════════════════════════════════════
+              LEFT COLUMN
+          ══════════════════════════════════════════════════════════ */}
+          <div className="flex flex-col gap-4 sm:gap-6">
+
+            {/* Mode Switcher */}
             <div className="flex flex-col gap-3">
               <div className="inline-flex flex-wrap justify-center p-1 sm:p-1.5 bg-gray-200/50 dark:bg-gray-800/50 backdrop-blur-md rounded-2xl sm:rounded-full shadow-inner border border-gray-200/50 dark:border-gray-700/50 w-full sm:w-fit">
                 <button
-                  onClick={() => { if (mode !== 'camera') { setMode('camera'); setIsRecording(false); setInputText(""); setTranslatedText("..."); setIsFavorited(false); } }}
+                  onClick={() => { if (mode !== 'camera') { saveCurrentSession(); pendingSaveRef.current = null; lastSavedRef.current = ''; setMode('camera'); setIsRecording(false); setInputText(''); setTranslatedText('...'); setIsFavorited(false); } }}
                   className={`flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${mode === 'camera' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
                 >
-                  <Video size={16} className="sm:w-[18px] sm:h-[18px]" /> Sign Mode
+                  <Video size={16} /> Sign Mode
                 </button>
                 <button
-                  onClick={() => { if (mode !== 'text') { setMode('text'); stopTranslation(); setInputText(""); setTranslatedText("..."); setIsFavorited(false); } }}
+                  onClick={() => { if (mode !== 'text') { saveCurrentSession(); pendingSaveRef.current = null; lastSavedRef.current = ''; setMode('text'); stopTranslation(); setInputText(''); setTranslatedText('...'); setIsFavorited(false); } }}
                   className={`flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${mode === 'text' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
                 >
-                  <Keyboard size={16} className="sm:w-[18px] sm:h-[18px]" /> Text Mode
+                  <Keyboard size={16} /> Text Mode
                 </button>
               </div>
 
               <AnimatePresence>
                 {mode === 'camera' && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: -10, height: 0 }} 
-                    animate={{ opacity: 1, y: 0, height: 'auto' }} 
+                  <motion.div
+                    initial={{ opacity: 0, y: -10, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: 'auto' }}
                     exit={{ opacity: 0, y: -10, height: 0 }}
                     className="inline-flex flex-wrap justify-center p-1 bg-indigo-50/50 dark:bg-[#1e293b]/50 backdrop-blur-md rounded-2xl sm:rounded-full shadow-sm border border-indigo-100/50 dark:border-gray-700/50 w-full sm:w-fit overflow-hidden"
                   >
                     {[
                       { id: 'word', label: 'Word Mode', icon: MessageSquare },
                       { id: 'alphabet', label: 'Alphabet Mode', icon: Type },
-                      { id: 'number', label: 'Number Mode', icon: Hash }
-                    ].map((sm) => {
-                      const Icon = sm.icon;
-                      const isActive = signMode === sm.id;
-                      return (
-                        <button
-                          key={sm.id}
-                          onClick={() => handleSignModeChange(sm.id)}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-300 ${isActive ? 'bg-primary text-white shadow-md' : 'text-gray-600 hover:text-primary dark:text-gray-400 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-700/50'}`}
-                        >
-                          <Icon size={14} /> {sm.label}
-                        </button>
-                      );
-                    })}
+                      { id: 'number', label: 'Number Mode', icon: Hash },
+                    ].map(({ id, label, icon: Icon }) => (
+                      <button
+                        key={id}
+                        onClick={() => handleSignModeChange(id)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-300 ${signMode === id ? 'bg-primary text-white shadow-md' : 'text-gray-600 hover:text-primary dark:text-gray-400 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-700/50'}`}
+                      >
+                        <Icon size={14} /> {label}
+                      </button>
+                    ))}
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
-            <div className="relative flex items-center justify-center overflow-hidden bg-gray-100/50 border border-gray-200/50 shadow-2xl dark:bg-gray-800/30 dark:border-gray-700/50 rounded-3xl min-h-[320px] sm:min-h-0 aspect-[4/3] sm:aspect-video backdrop-blur-sm group">
+            {/* ── CAMERA BOX ── */}
+            <div className="relative flex items-center justify-center overflow-hidden border shadow-2xl bg-gray-100/50 border-gray-200/50 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-3xl aspect-video backdrop-blur-sm group">
               <div className="absolute inset-0 z-0 pointer-events-none rounded-3xl ring-1 ring-inset ring-black/5 dark:ring-white/5" />
-              
-              {mode === 'camera' && (
-                <button
-                  onClick={() => setShowTips(true)}
-                  className="absolute z-40 top-4 left-4 flex items-center gap-2 px-3 py-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md rounded-full border border-white/40 dark:border-white/10 text-gray-800 dark:text-gray-200 hover:bg-white/60 dark:hover:bg-black/60 transition-all shadow-sm"
-                >
-                  <Lightbulb size={16} className="text-yellow-600 dark:text-yellow-400" />
-                  <span className="text-xs font-semibold">Tips</span>
-                </button>
-              )}
 
-              {mode === 'camera' ? (
+              {mode === 'camera' && (
                 <>
                   {isRecording ? (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-0 w-full h-full">
@@ -340,235 +461,353 @@ const Translator = () => {
                         audio={false}
                         ref={webcamRef}
                         screenshotFormat="image/jpeg"
-                        onUserMedia={initSocket} // <--- FIX: Start socket only when camera starts
-                        onUserMediaError={() => { alert("Camera Blocked or Not Found"); setIsRecording(false); }}
-                        videoConstraints={{ width: 640, height: 480, facingMode: "user" }} // Simpler constraints for better compatibility
+                        onUserMedia={initSocket}
+                        onUserMediaError={() => { alert('Camera Blocked or Not Found'); setIsRecording(false); }}
+                        videoConstraints={{ width: 640, height: 480, facingMode: 'user' }}
                         className="absolute inset-0 z-0 object-cover w-full h-full transform scale-x-[-1]"
                       />
                       <canvas ref={canvasRef} className="absolute inset-0 z-10 object-cover w-full h-full pointer-events-none" />
-                      <div className="absolute z-20 flex items-center gap-2 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-full top-4 right-4 shadow-lg border border-white/10">
-                        <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+
+                      {/* TOP ROW: Tips (left) + LIVE badge (right) — no overlap */}
+                      <div className="absolute z-30 top-3 left-3">
+                        <button
+                          onClick={() => setShowTips(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-full border border-white/10 text-white hover:bg-black/70 transition-all shadow-sm"
+                        >
+                          <Lightbulb size={13} className="text-yellow-400" />
+                          <span className="text-xs font-semibold">Tips</span>
+                        </button>
+                      </div>
+                      <div className="absolute top-3 right-3 z-30 flex items-center gap-2 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-full border border-white/10 shadow-lg">
+                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                         <span className="text-xs font-medium tracking-wide text-white uppercase">Live</span>
                       </div>
+
+                      {/* CENTER: Collecting indicator */}
+                      <AnimatePresence>
+                        {signMode === 'word' && isCollecting && (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            className="absolute inset-x-0 z-30 flex justify-center -translate-y-1/2 pointer-events-none top-1/2"
+                          >
+                            <div className="flex items-center gap-2 px-4 py-2 border rounded-full shadow-xl bg-black/70 backdrop-blur-md border-white/10">
+                              <Loader2 size={14} className="text-primary animate-spin" />
+                              <span className="text-xs font-semibold text-white">
+                                Recording... {collectingFrames} frames
+                              </span>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* BOTTOM-CENTER: Word flash — sits ABOVE the stop button with margin */}
+                      <AnimatePresence>
+                        {signMode === 'word' && wordFlash && !isCollecting && (
+                          <motion.div
+                            key={wordFlash.word + wordFlash.confidence}
+                            initial={{ opacity: 0, y: 8, scale: 0.9 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute inset-x-0 z-30 flex justify-center pointer-events-none bottom-20 sm:bottom-24"
+                          >
+                            <div className="flex items-center gap-2 px-4 py-2 border rounded-full shadow-xl bg-green-500/90 backdrop-blur-md border-green-400/30">
+                              <CheckCircle size={15} className="text-white shrink-0" />
+                              <span className="text-sm font-bold text-white capitalize">{wordFlash.word}</span>
+                              <ConfidenceDots confidence={wordFlash.confidence} />
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* BOTTOM-RIGHT: Alternative words — above stop button, right edge */}
+                      <AnimatePresence>
+                        {signMode === 'word' && wordAlternatives.length > 0 && !isCollecting && (
+                          <motion.div
+                            initial={{ opacity: 0, x: 8 }}
+                            animate={{ opacity: 0.8, x: 0 }}
+                            exit={{ opacity: 0, x: 8 }}
+                            className="absolute z-30 flex flex-col items-end gap-1 pointer-events-none bottom-20 sm:bottom-24 right-3"
+                          >
+                            <span className="text-[9px] text-white/40 uppercase tracking-widest mb-0.5">Alt.</span>
+                            {wordAlternatives.map((alt, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center gap-1.5 px-2.5 py-1 bg-black/55 backdrop-blur-sm rounded-full border border-white/10"
+                              >
+                                <span className="text-xs capitalize text-white/70">{alt.word}</span>
+                                <span className="text-[10px] text-white/35">{Math.round(alt.confidence * 100)}%</span>
+                              </div>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </motion.div>
                   ) : (
-                    <div className="z-10 flex flex-col items-center pb-12 sm:pb-0 text-gray-400 dark:text-gray-500 transition-transform duration-500 group-hover:scale-105">
-                      <div className="flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 mb-4 sm:mb-6 bg-white shadow-sm dark:bg-gray-800 rounded-full border border-gray-100 dark:border-gray-700">
-                        <Camera className="w-8 h-8 sm:w-10 sm:h-10 text-gray-300 dark:text-gray-600" />
+                    <div className="z-10 flex flex-col items-center text-gray-400 transition-transform duration-500 dark:text-gray-500 group-hover:scale-105">
+                      <div className="flex items-center justify-center w-16 h-16 mb-4 bg-white border border-gray-100 rounded-full shadow-sm sm:w-20 sm:h-20 dark:bg-gray-800 dark:border-gray-700">
+                        <Camera className="w-8 h-8 text-gray-300 sm:w-10 sm:h-10 dark:text-gray-600" />
                       </div>
-                      <p className="text-base sm:text-lg font-medium tracking-wide text-gray-800 dark:text-gray-300">Ready to translate</p>
-                      <p className="mt-1 text-xs sm:text-sm opacity-70 text-center px-4">Turn on camera to begin signing</p>
+                      <p className="text-base font-medium text-gray-800 sm:text-lg dark:text-gray-300">Ready to translate</p>
+                      <p className="px-4 mt-1 text-xs text-center sm:text-sm opacity-70">Turn on camera to begin signing</p>
                     </div>
                   )}
-                  <div className="absolute left-0 right-0 z-20 flex justify-center bottom-4 sm:bottom-6">
-                    <button
-                      onClick={toggleRecording}
-                      className={`flex items-center gap-2 sm:gap-3 px-6 sm:px-8 py-3 sm:py-4 rounded-full font-bold shadow-2xl transition-all duration-300 text-sm sm:text-base text-white ${isRecording
-                        ? 'bg-red-500 hover:bg-red-600 shadow-red-500/40 ring-4 ring-red-500/20'
-                        : 'animate-gradient bg-gradient-to-r from-primary via-purple-500 to-primary bg-[length:300%_100%] shadow-primary/40 ring-4 ring-primary/20 hover:shadow-primary/60'
-                        }`}
-                    >
-                      {isRecording ? <><StopCircle size={20} className="sm:w-[22px] sm:h-[22px]" /> Stop Translation</> : <><Camera size={20} className="sm:w-[22px] sm:h-[22px]" /> Start Signing</>}
-                    </button>
-                  </div>
                 </>
-              ) : (
+              )}
+
+              {mode === 'text' && (
                 <textarea
                   value={inputText}
                   onChange={(e) => { setInputText(e.target.value); setIsFavorited(false); }}
                   placeholder="Start typing your phrase here..."
-                  className="relative z-10 w-full h-full p-8 text-xl text-gray-900 bg-transparent resize-none md:text-2xl dark:text-white placeholder-gray-400/80 dark:placeholder-gray-600 focus:outline-none"
+                  className="relative z-10 w-full h-full p-6 text-lg text-gray-900 bg-transparent resize-none sm:p-8 sm:text-xl dark:text-white placeholder-gray-400/80 dark:placeholder-gray-600 focus:outline-none"
                 />
+              )}
+
+              {/* Tips button when not recording */}
+              {mode === 'camera' && !isRecording && (
+                <div className="absolute z-30 top-3 left-3">
+                  <button
+                    onClick={() => setShowTips(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md rounded-full border border-white/40 dark:border-white/10 text-gray-800 dark:text-gray-200 hover:bg-white/60 transition-all shadow-sm"
+                  >
+                    <Lightbulb size={13} className="text-yellow-500 dark:text-yellow-400" />
+                    <span className="text-xs font-semibold">Tips</span>
+                  </button>
+                </div>
+              )}
+
+              {/* STOP / START button — always at bottom, full width on mobile */}
+              {mode === 'camera' && (
+                <div className="absolute inset-x-0 z-30 flex justify-center px-4 bottom-3 sm:bottom-4">
+                  <button
+                    onClick={toggleRecording}
+                    className={`flex items-center gap-2 px-6 sm:px-8 py-3 rounded-full font-bold shadow-2xl transition-all duration-300 text-sm text-white
+                      ${isRecording
+                        ? 'bg-red-500 hover:bg-red-600 shadow-red-500/40 ring-4 ring-red-500/20'
+                        : 'bg-gradient-to-r from-primary via-purple-500 to-primary shadow-primary/40 ring-4 ring-primary/20 hover:shadow-primary/60'
+                      }`}
+                  >
+                    {isRecording
+                      ? <><StopCircle size={18} /> Stop Translation</>
+                      : <><Camera size={18} /> Start Signing</>
+                    }
+                  </button>
+                </div>
               )}
             </div>
           </div>
 
-          <div className="flex flex-col space-y-4">
-            <div 
-              className={`relative z-30 flex flex-col gap-4 p-5 bg-white border shadow-sm rounded-2xl transition-all duration-300 
-                ${(mode === 'camera' && signMode === 'number') 
-                  ? 'hidden lg:flex lg:opacity-0 lg:pointer-events-none border-transparent dark:border-transparent select-none' 
-                  : 'border-gray-200 dark:bg-[#1e293b] dark:border-gray-700/30 opacity-100'}`}
-              aria-hidden={mode === 'camera' && signMode === 'number'}
+          {/* ══════════════════════════════════════════════════════════
+              RIGHT COLUMN
+          ══════════════════════════════════════════════════════════ */}
+          <div className="flex flex-col gap-4">
+
+            {/* Language selectors */}
+            <div
+              className={`flex flex-col gap-4 p-4 sm:p-5 bg-white border shadow-sm rounded-2xl transition-all duration-300
+                ${(mode === 'camera' && signMode === 'number')
+                  ? 'hidden'
+                  : 'border-gray-200 dark:bg-[#1e293b] dark:border-gray-700/30'}`}
             >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
-                  <span className="text-sm font-bold text-gray-700 dark:text-gray-300">From:</span>
-                  <div className="w-full sm:w-64">
-                    {mode === 'camera' ? (
-                      <div className="flex items-center w-full px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-xl dark:bg-[#334155] dark:text-gray-300 dark:border-gray-600/50">
-                        American Sign Language (ASL)
-                      </div>
-                    ) : (
-                      <LanguageSelector selectedLang={sourceLang} onChange={setSourceLang} includeAuto={true} />
-                    )}
-                  </div>
+              <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                <span className="text-sm font-bold text-gray-700 dark:text-gray-300 shrink-0">From:</span>
+                <div className="w-full sm:w-64">
+                  {mode === 'camera' ? (
+                    <div className="flex items-center w-full px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-xl dark:bg-[#334155] dark:text-gray-300 dark:border-gray-600/50">
+                      American Sign Language (ASL)
+                    </div>
+                  ) : (
+                    <LanguageSelector selectedLang={sourceLang} onChange={setSourceLang} includeAuto={true} />
+                  )}
                 </div>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
-                  <span className="text-sm font-bold text-gray-700 dark:text-gray-300">To:</span>
-                  <div className="w-full sm:w-64">
-                    <LanguageSelector selectedLang={targetLang} onChange={setTargetLang} includeAuto={false} />
-                  </div>
+              </div>
+              <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                <span className="text-sm font-bold text-gray-700 dark:text-gray-300 shrink-0">To:</span>
+                <div className="w-full sm:w-64">
+                  <LanguageSelector selectedLang={targetLang} onChange={setTargetLang} includeAuto={false} />
                 </div>
+              </div>
             </div>
 
-            <div className="relative flex flex-col w-full min-h-[220px] flex-grow p-6 bg-white border border-gray-200 shadow-sm dark:bg-[#1e293b]/60 dark:border-gray-700/30 rounded-[2rem]">
-              <div className="absolute top-6 right-6 flex items-center gap-2">
+            {/* ── Translation output panel ── */}
+            <div className="relative flex flex-col flex-grow p-5 sm:p-6 bg-white border border-gray-200 shadow-sm dark:bg-[#1e293b]/60 dark:border-gray-700/30 rounded-[2rem] min-h-[200px]">
+
+              {/* Save status — top-left */}
+              <div className="absolute top-4 left-5 flex items-center gap-2 min-h-[28px]">
                 <AnimatePresence>
                   {saveStatus === 'saving' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 px-3 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded-full dark:bg-[#334155] dark:text-gray-400">
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"></span> Saving...
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded-full dark:bg-[#334155] dark:text-gray-400">
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" /> Saving...
                     </motion.div>
                   )}
                   {saveStatus === 'saved' && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-green-600 bg-green-100 rounded-full dark:bg-green-900/30 dark:text-green-400">
-                      <CheckCircle size={12} /> Saved
+                      <CheckCircle size={11} /> Saved
                     </motion.div>
                   )}
                 </AnimatePresence>
+              </div>
+
+              {/* Favorite button — top-right, alone, no overlap */}
+              <div className="absolute top-3 right-4">
                 <motion.button
                   onClick={toggleFavorite}
                   whileTap={{ scale: 0.85 }}
                   title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
-                  className={`p-2 rounded-full transition-all duration-200 ${
-                    isFavorited
-                      ? 'text-rose-500 bg-rose-50 dark:bg-rose-900/30'
-                      : 'text-gray-400 hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20'
-                  }`}
+                  className={`p-2 rounded-full transition-all duration-200 ${isFavorited ? 'text-rose-500 bg-rose-50 dark:bg-rose-900/30' : 'text-gray-400 hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20'}`}
                 >
                   <Heart size={18} fill={isFavorited ? 'currentColor' : 'none'} />
                 </motion.button>
               </div>
+
+              {/* Input sentence section */}
               {mode === 'camera' && signMode !== 'number' && (
-                <div className="flex-1 pb-6 mb-6 border-b border-gray-100 dark:border-gray-600/30">
-                  <h2 className="mb-6 text-xs tracking-widest text-gray-500 uppercase dark:text-gray-400/80 font-bold">
-                    {signMode === 'alphabet' ? 'Input Letter' : 'Input Sentence'}
-                  </h2>
-                  <p className="w-full min-h-[60px] text-xl font-mono text-gray-700 break-words dark:text-gray-500/80">
-                    {inputText || "Waiting for signs..."}
-                    {isRecording && <span className="inline-block w-2.5 h-5 ml-1 align-middle bg-primary animate-pulse"></span>}
-                  </p>
+                <div className="pb-4 mt-8 mb-4 border-b border-gray-100 dark:border-gray-600/30">
+                  {/* Label row: title left, undo right — clearly separated */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-xs font-bold tracking-widest text-gray-500 uppercase dark:text-gray-400/80">
+                      {signMode === 'alphabet' ? 'Input Letter' : 'Input Sentence'}
+                    </h2>
+                    <AnimatePresence>
+                      {lastWord && signMode === 'word' && (
+                        <motion.button
+                          initial={{ opacity: 0, scale: 0.85 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.85 }}
+                          onClick={undoLastWord}
+                          className="flex items-center gap-1 px-2.5 py-1 text-xs text-gray-500 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700/60 dark:hover:bg-gray-700 dark:text-gray-400 rounded-full transition-colors"
+                        >
+                          <RotateCcw size={11} />
+                          Undo
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {signMode === 'word' && isCollecting ? (
+                    <div className="flex items-center gap-2 min-h-[48px]">
+                      <Loader2 size={16} className="text-primary animate-spin shrink-0" />
+                      <p className="text-sm italic text-gray-400 dark:text-gray-500">Signing in progress...</p>
+                    </div>
+                  ) : (
+                    <p className="min-h-[48px] text-lg sm:text-xl font-mono text-gray-700 dark:text-gray-300 break-words leading-relaxed">
+                      {inputText || <span className="font-sans text-base font-normal text-gray-300 dark:text-gray-600">Waiting for signs...</span>}
+                      {isRecording && <span className="inline-block w-2 h-5 ml-1 align-middle rounded-sm bg-primary animate-pulse" />}
+                    </p>
+                  )}
                 </div>
               )}
-              <div className="flex-1">
-                <h2 className="mb-6 text-xs tracking-widest text-gray-500 uppercase dark:text-gray-400/80 font-bold">Translation Result</h2>
-                <p className="w-full text-4xl font-extrabold tracking-tight text-gray-900 break-words md:text-5xl dark:text-white leading-tight">
-                  {(mode === 'camera' && signMode === 'number') ? (inputText || "Waiting for signs...") : translatedText}
+
+              {/* Translation result section */}
+              <div className={mode === 'camera' && signMode !== 'number' ? '' : 'mt-8'}>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xs font-bold tracking-widest text-gray-500 uppercase dark:text-gray-400/80">
+                    Translation Result
+                  </h2>
+                  {translatedText && translatedText !== '...' && (
+                    <button
+                      onClick={() => speakText(translatedText)}
+                      className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-full transition-colors"
+                    >
+                      <Volume2 size={12} /> Speak again
+                    </button>
+                  )}
+                </div>
+                <p className="text-3xl font-extrabold leading-tight tracking-tight text-gray-900 break-words sm:text-4xl md:text-5xl dark:text-white">
+                  {(mode === 'camera' && signMode === 'number')
+                    ? (inputText || <span className="text-2xl font-normal text-gray-300 dark:text-gray-600">Waiting for signs...</span>)
+                    : translatedText}
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
-              <button onClick={() => speakText(translatedText)} className="flex items-center justify-center gap-2 sm:gap-3 p-3 sm:p-4 text-gray-700 transition-colors bg-white border border-gray-200 rounded-xl dark:text-white dark:bg-[#334155] dark:border-transparent hover:brightness-110">
-                <Volume2 size={18} className="sm:w-5 sm:h-5" />
-                <span className="text-xs sm:text-sm font-medium">Speak</span>
-              </button>
-              <button onClick={() => { setInputText(prev => prev.slice(0, -1)); setIsFavorited(false); }} className="flex items-center justify-center gap-2 sm:gap-3 p-3 sm:p-4 text-gray-700 transition-colors bg-white border border-gray-200 rounded-xl dark:text-white dark:bg-[#334155] dark:border-transparent hover:brightness-110">
-                <Delete size={18} className="sm:w-5 sm:h-5" />
-                <span className="text-xs sm:text-sm font-medium">Backspace</span>
-              </button>
-              <button onClick={() => { setInputText(prev => prev + " "); setIsFavorited(false); }} className="flex items-center justify-center gap-2 sm:gap-3 p-3 sm:p-4 text-gray-700 transition-colors bg-white border border-gray-200 rounded-xl dark:text-white dark:bg-[#334155] dark:border-transparent hover:brightness-110">
-                <Keyboard size={18} className="sm:w-5 sm:h-5" />
-                <span className="text-xs sm:text-sm font-medium">Space</span>
-              </button>
-              <button onClick={() => { setTranslatedText("..."); setInputText(""); setIsFavorited(false); }} className="flex items-center justify-center gap-2 sm:gap-3 p-3 sm:p-4 text-red-500 transition-colors bg-red-50 border border-red-100 rounded-xl dark:bg-[#341b25] dark:border-[#52212d] dark:text-[#f87171] hover:brightness-110">
-                <Trash2 size={18} className="sm:w-5 sm:h-5" />
-                <span className="text-xs sm:text-sm font-medium">Clear</span>
-              </button>
+            {/* Action buttons */}
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+              {[
+                { label: 'Speak', icon: Volume2, onClick: () => speakText(translatedText), style: '' },
+                { label: 'Backspace', icon: Delete, onClick: () => { setInputText(p => p.slice(0, -1)); setIsFavorited(false); }, style: '' },
+                { label: 'Space', icon: Keyboard, onClick: () => { setInputText(p => p + ' '); setIsFavorited(false); }, style: '' },
+                { label: 'Clear', icon: Trash2, onClick: clearAll, style: 'text-red-500 bg-red-50 border-red-100 dark:bg-[#341b25] dark:border-[#52212d] dark:text-[#f87171]' },
+              ].map(({ label, icon: Icon, onClick, style }) => (
+                <button
+                  key={label}
+                  onClick={onClick}
+                  className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 p-3 rounded-xl border transition-colors hover:brightness-110 ${style || 'text-gray-700 bg-white border-gray-200 dark:text-white dark:bg-[#334155] dark:border-transparent'}`}
+                >
+                  <Icon size={16} className="sm:w-[18px] sm:h-[18px] shrink-0" />
+                  <span className="text-[10px] sm:text-xs font-medium leading-tight text-center">{label}</span>
+                </button>
+              ))}
             </div>
           </div>
         </div>
 
-        {/* History & Favorites Bottom Bar */}
-        <div className="flex justify-center gap-16 py-8 mt-4">
-          <button
-            onClick={() => openPanel('history')}
-            className={`flex flex-col items-center gap-1.5 group transition-all duration-200 ${
-              activePanel === 'history' ? 'text-primary' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
-          >
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-200 ${
-              activePanel === 'history'
-                ? 'border-primary bg-primary/10'
-                : 'border-gray-200 dark:border-gray-700 group-hover:border-gray-400 dark:group-hover:border-gray-500'
-            }`}>
-              <Clock size={22} />
-            </div>
-            <span className="text-xs font-medium">History</span>
-          </button>
-          <button
-            onClick={() => openPanel('favorites')}
-            className={`flex flex-col items-center gap-1.5 group transition-all duration-200 ${
-              activePanel === 'favorites' ? 'text-rose-500' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
-          >
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-200 ${
-              activePanel === 'favorites'
-                ? 'border-rose-400 bg-rose-50 dark:bg-rose-900/20'
-                : 'border-gray-200 dark:border-gray-700 group-hover:border-gray-400 dark:group-hover:border-gray-500'
-            }`}>
-              <Star size={22} fill={activePanel === 'favorites' ? 'currentColor' : 'none'} />
-            </div>
-            <span className="text-xs font-medium">Saved</span>
-          </button>
+        {/* History & Favorites bar */}
+        <div className="flex justify-center gap-12 py-6 mt-2 sm:gap-16 sm:py-8">
+          {[
+            { id: 'history', icon: Clock, label: 'History', activeColor: 'text-primary border-primary bg-primary/10', defaultColor: 'border-gray-200 dark:border-gray-700' },
+            { id: 'favorites', icon: Star, label: 'Saved', activeColor: 'text-rose-500 border-rose-400 bg-rose-50 dark:bg-rose-900/20', defaultColor: 'border-gray-200 dark:border-gray-700' },
+          ].map(({ id, icon: Icon, label, activeColor, defaultColor }) => (
+            <button key={id} onClick={() => openPanel(id)} className={`flex flex-col items-center gap-1.5 group transition-all duration-200 ${activePanel === id ? activeColor.split(' ')[0] : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+              <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center border-2 transition-all duration-200 ${activePanel === id ? activeColor : defaultColor}`}>
+                <Icon size={20} fill={id === 'favorites' && activePanel === id ? 'currentColor' : 'none'} />
+              </div>
+              <span className="text-xs font-medium">{label}</span>
+            </button>
+          ))}
         </div>
       </main>
 
-      {/* Tips Popup Modal */}
+      {/* ── Tips Modal ── */}
       <AnimatePresence>
         {showTips && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center sm:p-4 bg-black/40 backdrop-blur-sm"
-          >
-            <div className="relative w-full h-full sm:h-auto sm:max-w-sm sm:max-h-[90vh] overflow-y-auto p-8 sm:p-6 bg-white/95 dark:bg-[#0f172a]/95 backdrop-blur-2xl sm:border sm:border-white/50 dark:border-gray-700/50 shadow-2xl rounded-none sm:rounded-3xl flex flex-col justify-center">
-              <button onClick={() => setShowTips(false)} className="absolute top-6 right-6 sm:top-4 sm:right-4 p-2 sm:p-1.5 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white rounded-full bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors">
-                <X size={20} className="sm:w-4 sm:h-4" />
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center sm:p-4 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ y: '100%', opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '100%', opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+              className="relative w-full sm:max-w-sm p-6 bg-white dark:bg-[#0f172a] sm:border sm:border-gray-200 dark:border-gray-700/50 shadow-2xl rounded-t-3xl sm:rounded-3xl"
+            >
+              <button onClick={() => setShowTips(false)} className="absolute p-2 text-gray-400 transition-colors bg-gray-100 rounded-full top-4 right-4 hover:text-gray-700 dark:hover:text-white dark:bg-white/10">
+                <X size={18} />
               </button>
-              <div className="flex items-center gap-3 mb-8 sm:mb-4">
-                <div className="p-3 sm:p-2 bg-yellow-100 dark:bg-yellow-500/20 rounded-full shadow-inner">
-                  <Lightbulb className="w-6 h-6 sm:w-5 sm:h-5 text-yellow-600 dark:text-yellow-400" />
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2 bg-yellow-100 rounded-full dark:bg-yellow-500/20">
+                  <Lightbulb className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
                 </div>
-                <h3 className="text-2xl sm:text-lg font-bold text-gray-900 dark:text-white">Pro Tips</h3>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Pro Tips</h3>
               </div>
-              <ul className="space-y-6 sm:space-y-3 text-base sm:text-sm text-gray-700 dark:text-gray-300">
-                <li className="flex gap-4 sm:gap-3 items-start">
-                  <CheckCircle className="w-6 h-6 sm:w-4 sm:h-4 text-green-500 shrink-0 mt-0.5" />
-                  <span>Ensure <b>better lighting</b> for accurate hand tracking.</span>
-                </li>
-                <li className="flex gap-4 sm:gap-3 items-start">
-                  <CheckCircle className="w-6 h-6 sm:w-4 sm:h-4 text-green-500 shrink-0 mt-0.5" />
-                  <span>Use a <b>clear, non-noisy background</b> without distractions.</span>
-                </li>
-                <li className="flex gap-4 sm:gap-3 items-start">
-                  <CheckCircle className="w-6 h-6 sm:w-4 sm:h-4 text-green-500 shrink-0 mt-0.5" />
-                  <span>Keep your <b>hands closer to the camera</b> and fully visible.</span>
-                </li>
-                <li className="flex gap-4 sm:gap-3 items-start">
-                  <CheckCircle className="w-6 h-6 sm:w-4 sm:h-4 text-green-500 shrink-0 mt-0.5" />
-                  <span>Make signs <b>deliberately</b> and hold briefly to register.</span>
-                </li>
+              <ul className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+                {[
+                  'Ensure better lighting for accurate hand tracking.',
+                  'Use a plain, non-noisy background.',
+                  'Keep your hand close to the camera and fully visible.',
+                  'Word Mode — sign one word, lower your hand, result appears automatically.',
+                  'Green pill = word recognized. Dots show model confidence.',
+                  'Tap Undo if the wrong word was captured.',
+                  'Translation is spoken aloud automatically.',
+                ].map((tip, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <CheckCircle className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+                    <span>{tip}</span>
+                  </li>
+                ))}
               </ul>
-              <button onClick={() => setShowTips(false)} className="w-full mt-10 sm:mt-6 py-4 sm:py-2.5 text-lg sm:text-base bg-gray-900/10 dark:bg-white/10 hover:bg-gray-900/20 dark:hover:bg-white/20 text-gray-900 dark:text-white font-semibold rounded-xl transition-colors backdrop-blur-md border border-gray-900/10 dark:border-white/10">Got it!</button>
-            </div>
+              <button onClick={() => setShowTips(false)} className="w-full mt-6 py-2.5 bg-gray-900/10 dark:bg-white/10 hover:bg-gray-900/20 dark:hover:bg-white/20 text-gray-900 dark:text-white font-semibold rounded-xl transition-colors">Got it!</button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Right Side Panel */}
+      {/* ── Side Panel (History / Favorites) ── */}
       <AnimatePresence>
         {activePanel && (
           <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setActivePanel(null)}
-              className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm"
-            />
-            {/* Panel */}
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setActivePanel(null)} className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm" />
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
@@ -576,35 +815,29 @@ const Translator = () => {
               transition={{ type: 'spring', damping: 28, stiffness: 260 }}
               className="fixed top-0 right-0 z-[210] h-full w-full max-w-sm bg-white dark:bg-[#0f172a] shadow-2xl flex flex-col"
             >
-              {/* Panel Header */}
-              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
                 <div className="flex items-center gap-3">
                   {activePanel === 'history'
                     ? <Clock size={20} className="text-primary" />
-                    : <Star size={20} className="text-rose-500" fill="currentColor" />
-                  }
-                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                    : <Star size={20} className="text-rose-500" fill="currentColor" />}
+                  <h2 className="text-base font-bold text-gray-900 dark:text-white">
                     {activePanel === 'history' ? 'Translation History' : 'Saved Favorites'}
                   </h2>
                 </div>
-                <button
-                  onClick={() => setActivePanel(null)}
-                  className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <X size={20} />
+                <button onClick={() => setActivePanel(null)} className="p-2 text-gray-400 transition-colors rounded-full hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800">
+                  <X size={18} />
                 </button>
               </div>
 
-              {/* Panel Content */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex-1 p-4 space-y-3 overflow-y-auto">
                 {activePanel === 'history' && (
                   panelLoading ? (
                     <div className="flex items-center justify-center h-40">
-                      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                      <div className="w-8 h-8 border-4 rounded-full border-primary border-t-transparent animate-spin" />
                     </div>
                   ) : historyItems.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-40 text-gray-400">
-                      <Clock size={36} className="mb-3 opacity-30" />
+                      <Clock size={32} className="mb-3 opacity-30" />
                       <p className="text-sm">No history yet</p>
                     </div>
                   ) : historyItems.map((item, i) => (
@@ -614,13 +847,13 @@ const Translator = () => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.03 }}
                       onClick={() => applyHistoryItem(item)}
-                      className="w-full text-left p-4 rounded-2xl bg-gray-50 dark:bg-[#1e293b] border border-gray-100 dark:border-gray-700/40 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200 group"
+                      className="w-full text-left p-4 rounded-2xl bg-gray-50 dark:bg-[#1e293b] border border-gray-100 dark:border-gray-700/40 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200"
                     >
-                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{item.original_text}</p>
-                      <p className="text-xs text-primary dark:text-indigo-400 mt-1 truncate">{item.translated_text}</p>
+                      <p className="text-sm font-medium text-gray-800 truncate dark:text-gray-200">{item.original_text}</p>
+                      <p className="mt-1 text-xs truncate text-primary dark:text-indigo-400">{item.translated_text}</p>
                       <div className="flex items-center gap-2 mt-2">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 capitalize">{item.mode}</span>
-                        <span className="text-[10px] text-gray-400 dark:text-gray-500">{new Date(item.created_at || Date.now()).toLocaleDateString()}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 capitalize">{item.mode}</span>
+                        <span className="text-[10px] text-gray-400">{new Date(item.created_at || Date.now()).toLocaleDateString()}</span>
                       </div>
                     </motion.button>
                   ))
@@ -629,9 +862,9 @@ const Translator = () => {
                 {activePanel === 'favorites' && (
                   favorites.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-40 text-gray-400">
-                      <Heart size={36} className="mb-3 opacity-30" />
+                      <Heart size={32} className="mb-3 opacity-30" />
                       <p className="text-sm">No favorites yet</p>
-                      <p className="text-xs mt-1 opacity-60">Tap ♥ on a translation to save it</p>
+                      <p className="mt-1 text-xs opacity-60">Tap ♥ on a translation to save it</p>
                     </div>
                   ) : favorites.map((item, i) => (
                     <motion.div
@@ -639,21 +872,18 @@ const Translator = () => {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.03 }}
-                      className="relative p-4 rounded-2xl bg-rose-50/60 dark:bg-[#1e293b] border border-rose-100 dark:border-rose-900/30 group"
+                      className="relative p-4 rounded-2xl bg-rose-50/60 dark:bg-[#1e293b] border border-rose-100 dark:border-rose-900/30"
                     >
-                      <button
-                        onClick={() => applyFavorite(item)}
-                        className="w-full text-left"
-                      >
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate pr-8">{item.original}</p>
-                        <p className="text-xs text-rose-500 dark:text-rose-400 mt-1 truncate">{item.translated}</p>
+                      <button onClick={() => applyFavorite(item)} className="w-full text-left">
+                        <p className="pr-8 text-sm font-medium text-gray-800 truncate dark:text-gray-200">{item.original}</p>
+                        <p className="mt-1 text-xs truncate text-rose-500 dark:text-rose-400">{item.translated}</p>
                         <p className="text-[10px] text-gray-400 mt-2">{new Date(item.date).toLocaleDateString()}</p>
                       </button>
                       <button
                         onClick={() => removeFavorite(item.id)}
                         className="absolute top-3 right-3 p-1.5 text-gray-300 hover:text-red-400 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                       >
-                        <X size={14} />
+                        <X size={13} />
                       </button>
                     </motion.div>
                   ))
