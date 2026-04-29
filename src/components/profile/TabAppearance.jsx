@@ -1,8 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { Camera, Check, X, Trash2, Info } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
 import { authService } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { account } from '../../lib/appwtite';
+import ImageCropModal from './ImageCropModal';
 
 const TabAppearance = ({ user, setUser }) => {
   const { addToast } = useToast();
@@ -11,12 +13,34 @@ const TabAppearance = ({ user, setUser }) => {
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarLoading, setAvatarLoading] = useState(false);
 
+  // Raw image src fed into the crop modal
+  const [cropSrc, setCropSrc] = useState(null);
+  // Keep the original File so Re-crop reopens the full image, not the cropped blob
+  const [originalFile, setOriginalFile] = useState(null);
+
   const handleAvatarSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { addToast('Max 5 MB allowed.', 'error'); return; }
-    setAvatarFile(file);
-    setAvatarPreview(URL.createObjectURL(file));
+    setOriginalFile(file);
+    setCropSrc(URL.createObjectURL(file));
+    if (avatarInputRef.current) avatarInputRef.current.value = '';
+  };
+
+  const handleCropDone = (blob, previewUrl) => {
+    setAvatarFile(blob);
+    setAvatarPreview(previewUrl);
+    setCropSrc(null);
+  };
+
+  const handleCropCancel = () => {
+    setCropSrc(null);
+    // Only clear everything if user hasn't already confirmed a crop
+    if (!avatarPreview) setOriginalFile(null);
+  };
+
+  const handleReCrop = () => {
+    if (originalFile) setCropSrc(URL.createObjectURL(originalFile));
   };
 
   const handleAvatarUpload = async () => {
@@ -33,7 +57,7 @@ const TabAppearance = ({ user, setUser }) => {
       window.dispatchEvent(new Event('user-update'));
       addToast('Profile picture updated!', 'success');
     } catch { addToast('Upload failed.', 'error'); }
-    finally { setAvatarLoading(false); if (avatarInputRef.current) avatarInputRef.current.value = ''; }
+    finally { setAvatarLoading(false); }
   };
 
   const handleAvatarRemove = async () => {
@@ -56,11 +80,22 @@ const TabAppearance = ({ user, setUser }) => {
   const cancelAvatarPreview = () => {
     setAvatarPreview(null);
     setAvatarFile(null);
-    if (avatarInputRef.current) avatarInputRef.current.value = '';
+    setOriginalFile(null);
   };
 
   return (
     <div className="space-y-6">
+      {/* Crop modal */}
+      <AnimatePresence>
+        {cropSrc && (
+          <ImageCropModal
+            imageSrc={cropSrc}
+            onCrop={handleCropDone}
+            onCancel={handleCropCancel}
+          />
+        )}
+      </AnimatePresence>
+
       <div>
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Appearance</h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage your profile picture.</p>
@@ -86,7 +121,7 @@ const TabAppearance = ({ user, setUser }) => {
           <div className="flex-1 space-y-3 w-full">
             <div>
               <p className="font-semibold text-gray-800 dark:text-white mb-0.5">
-                {avatarPreview ? 'New image selected — review before saving' : user.profile_picture ? 'Current profile picture' : 'No profile picture set'}
+                {avatarPreview ? 'Cropped — looks good? Save when ready.' : user.profile_picture ? 'Current profile picture' : 'No profile picture set'}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400">Accepted: JPG, PNG, GIF, WebP · Max: 5 MB</p>
             </div>
@@ -103,6 +138,10 @@ const TabAppearance = ({ user, setUser }) => {
                       ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       : <Check className="w-4 h-4" />}
                     Save Photo
+                  </button>
+                  <button onClick={handleReCrop}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-white rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition font-semibold text-sm">
+                    Re-crop
                   </button>
                   <button onClick={cancelAvatarPreview}
                     className="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-white rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition font-semibold text-sm">
@@ -124,7 +163,7 @@ const TabAppearance = ({ user, setUser }) => {
         <div className="p-4 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl">
           <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2 mb-2"><Info className="w-4 h-4" /> Image Guidelines</p>
           <ul className="text-xs text-blue-600 dark:text-blue-300 space-y-1 list-disc list-inside">
-            <li>Use a square image for best results (e.g., 400 × 400 px)</li>
+            <li>Crop your photo into a perfect circle before saving</li>
             <li>Supported formats: JPEG, PNG, GIF, WebP</li>
             <li>Maximum file size: 5 MB</li>
             <li>Your image is stored securely and only visible to you</li>
