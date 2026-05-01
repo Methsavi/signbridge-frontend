@@ -5,6 +5,7 @@ import Topbar from '../../components/admin/Topbar';
 
 const AdminLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [bgTheme, setBgTheme] = useState(localStorage.getItem('adminBgTheme') || 'liquid');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -27,13 +28,22 @@ const AdminLayout = () => {
 
     checkAuth();
     window.addEventListener('user-update', checkAuth);
-    return () => window.removeEventListener('user-update', checkAuth);
+    
+    const updateTheme = () => setBgTheme(localStorage.getItem('adminBgTheme') || 'liquid');
+    window.addEventListener('admin-theme-update', updateTheme);
+    
+    return () => {
+      window.removeEventListener('user-update', checkAuth);
+      window.removeEventListener('admin-theme-update', updateTheme);
+    };
   }, [navigate]);
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
+  const bgClass = bgTheme === 'solid' ? 'bg-slate-50 dark:bg-slate-950' : 'admin-bg';
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans transition-colors duration-300">
+    <div className={`min-h-screen ${bgClass} text-slate-800 dark:text-slate-100 font-sans transition-colors duration-300`}>
       <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
 
       <div className="lg:ml-64 flex flex-col min-h-screen transition-all duration-300">

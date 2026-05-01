@@ -116,22 +116,18 @@ const UserManagement = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">User Management</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Manage all registered users in the system.</p>
-        </div>
+      <div className="flex justify-end">
         <button
           onClick={openCreateModal}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-colors shadow-lg shadow-blue-500/30 font-medium"
+          className="flex items-center gap-2 glass-button bg-blue-600/80 hover:bg-blue-600 text-white px-4 py-2 rounded-xl transition-colors shadow-lg shadow-blue-500/30 font-medium"
         >
           <Plus className="w-5 h-5" />
           Add User
         </button>
       </div>
 
-      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200/50 dark:border-slate-800/50 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/20">
+      <div className="bg-glass rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-200/50 dark:border-slate-800/50 flex justify-between items-center bg-white/20 dark:bg-black/40 backdrop-blur-md border border-white/20">
           <div className="relative group">
             <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
             <input
@@ -139,7 +135,7 @@ const UserManagement = () => {
               placeholder="Search users..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 pr-4 py-2 w-full sm:w-80 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500/50 text-slate-700 dark:text-slate-200 placeholder-slate-400 outline-none transition-all shadow-sm"
+              className="pl-10 pr-4 py-2 w-full sm:w-80 glass-input border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500/50 text-slate-700 dark:text-slate-200 placeholder-slate-400 outline-none transition-all shadow-sm"
             />
           </div>
         </div>
@@ -147,7 +143,7 @@ const UserManagement = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-sm">
+              <tr className="bg-white/20 dark:bg-black/40 text-slate-700 dark:text-slate-300 text-sm">
                 <th className="py-4 px-6 font-medium">User</th>
                 <th className="py-4 px-6 font-medium">Role</th>
                 <th className="py-4 px-6 font-medium">Status</th>
@@ -167,7 +163,7 @@ const UserManagement = () => {
                 </tr>
               )}
               {!loading && users.map((user) => (
-                <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
+                <tr key={user.id} className="hover:bg-white/20 dark:hover:bg-white/10 transition-colors group">
                   <td className="py-4 px-6">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-white flex items-center justify-center font-bold shadow-sm">
@@ -239,7 +235,7 @@ const UserManagement = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl">
+          <div className="w-full max-w-lg rounded-2xl bg-glass border border-slate-200 dark:border-slate-700 shadow-xl">
             <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {editingUser ? 'Edit User' : 'Create User'}
@@ -256,7 +252,7 @@ const UserManagement = () => {
                 placeholder="Username"
                 value={form.username}
                 onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 glass-input"
               />
               <input
                 required
@@ -264,7 +260,7 @@ const UserManagement = () => {
                 placeholder="Email"
                 value={form.email}
                 onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 glass-input"
               />
               <input
                 type="password"
@@ -272,14 +268,14 @@ const UserManagement = () => {
                 value={form.password}
                 required={!editingUser}
                 onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 glass-input"
               />
 
               <div className="grid grid-cols-2 gap-3">
                 <select
                   value={form.role}
                   onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}
-                  className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                  className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 glass-input"
                 >
                   <option>User</option>
                   <option>Admin</option>
@@ -288,7 +284,7 @@ const UserManagement = () => {
                 <select
                   value={form.status}
                   onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))}
-                  className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                  className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 glass-input"
                 >
                   <option>Active</option>
                   <option>Offline</option>

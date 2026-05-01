@@ -16,7 +16,7 @@ const activityData = [
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-4 rounded-xl border border-slate-200/50 dark:border-slate-800/50 shadow-xl">
+      <div className="bg-glass p-4 rounded-xl">
         <p className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-2">{label}</p>
         {payload.map((entry, index) => (
           <div key={index} className="flex items-center justify-between gap-6 mb-1 last:mb-0">
@@ -37,7 +37,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 const StatCard = ({ title, value, icon: Icon, trend, colorClass }) => (
-  <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl p-6 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)] transition-transform hover:-translate-y-1">
+  <div className="bg-glass p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:border-white/50 dark:hover:border-white/30">
     <div className="flex items-center justify-between">
       <div>
         <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">{title}</p>
@@ -91,11 +91,6 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Dashboard Overview</h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-1">Welcome back. Here's what's happening with SignBridge today.</p>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, idx) => (
           <StatCard key={idx} {...stat} />
@@ -103,12 +98,8 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl p-6 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)] min-h-[400px] flex flex-col transition-transform hover:-translate-y-1 duration-300">
-          <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">System Activity</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Translation requests vs active sessions over the last 7 days</p>
-            </div>
+        <div className="lg:col-span-2 bg-glass p-6 rounded-2xl min-h-[400px] flex flex-col transition-all hover:-translate-y-1 duration-300 hover:shadow-2xl hover:border-white/50 dark:hover:border-white/30">
+          <div className="mb-4 flex items-center justify-end">
             <div className="flex items-center gap-4 bg-slate-100/50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200/50 dark:border-slate-700/50">
               <div className="flex items-center gap-2 px-2">
                 <div className="w-3 h-3 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
@@ -176,8 +167,7 @@ const Dashboard = () => {
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl p-6 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-4">Recent Activity</h3>
+        <div className="bg-glass p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:border-white/50 dark:hover:border-white/30">
           <div className="space-y-4">
             {loading && (
               <p className="text-sm text-slate-500 dark:text-slate-400">Loading recent activity...</p>
