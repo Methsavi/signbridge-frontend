@@ -6,11 +6,11 @@ import { ThemeProvider } from './context/ThemeContext';
 import ScrollToTop from './components/ScrollToTop';
 
 import Home from './pages/Home';
-import Login from './pages/Login';
-import Register from './pages/Register';
+import Login from './pages/user/Login';
+import Register from './pages/user/Register';
 import About from './pages/About';
 import Translator from './pages/Translator';
-import Profile from './pages/Profile';
+import Profile from './pages/user/Profile';
 import Dictionary from './pages/Dictionary';
 import HowToUse from './pages/HowToUse';
 import Privacy from './pages/Privacy';
