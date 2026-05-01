@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Camera, StopCircle, Volume2, Trash2, Keyboard, Video,
   CheckCircle, Delete, Type, Hash, MessageSquare, Heart,
-  Clock, X, Star, Lightbulb, Loader2, RotateCcw
+  Clock, X, Star, Lightbulb, Loader2, RotateCcw,
+  AlertTriangle, Eye, Mic, MicOff
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -47,6 +48,26 @@ const Translator = () => {
   const [saveStatus, setSaveStatus] = useState(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const isSpeakingRef = useRef(false);
+
+  // ── Hand / sign feedback state ────────────────────────────────────
+  const [handDetected, setHandDetected] = useState(true);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const [currentSign, setCurrentSign] = useState('');
+  const [signConfidence, setSignConfidence] = useState(0);
+  // Time-based warnings — only fire after sustained absence, not on brief transitions
+  const [showNoHandWarning, setShowNoHandWarning] = useState(false);
+  const [showLowConfWarning, setShowLowConfWarning] = useState(false);
+  const noHandSinceRef = useRef(null);     // ms timestamp when hand first left frame
+  const lowConfSinceRef = useRef(null);    // ms timestamp when low-confidence started
+  const noHandWarnShownRef = useRef(false);  // true once warning fired for this absence session
+  const lowConfWarnShownRef = useRef(false); // true once warning fired for this unclear session
+  const noHandDismissRef = useRef(null);   // setTimeout handle for no-hand auto-dismiss
+  const lowConfDismissRef = useRef(null);  // setTimeout handle for low-conf auto-dismiss
+
+  // ── Voice typing (text mode) ──────────────────────────────────────
+  const [isListening, setIsListening] = useState(false);
+  const [voiceSupported] = useState(() => !!(window.SpeechRecognition || window.webkitSpeechRecognition));
+  const recognitionRef = useRef(null);
 
   const [activePanel, setActivePanel] = useState(null);
   const [historyItems, setHistoryItems] = useState([]);
@@ -283,6 +304,14 @@ const Translator = () => {
     if (socketRef.current) socketRef.current.close();
     if (intervalRef.current) clearInterval(intervalRef.current);
 
+    // Reset all feedback state and timers
+    setHandDetected(true); setHoldProgress(0); setCurrentSign(''); setSignConfidence(0);
+    setShowNoHandWarning(false); setShowLowConfWarning(false);
+    noHandSinceRef.current = null; lowConfSinceRef.current = null;
+    noHandWarnShownRef.current = false; lowConfWarnShownRef.current = false;
+    if (noHandDismissRef.current) { clearTimeout(noHandDismissRef.current); noHandDismissRef.current = null; }
+    if (lowConfDismissRef.current) { clearTimeout(lowConfDismissRef.current); lowConfDismissRef.current = null; }
+
     const currentMode = signModeRef.current;
     socketRef.current = new WebSocket(`${import.meta.env.VITE_WS_URL}/ws/predict/${currentMode}`);
 
@@ -353,11 +382,60 @@ const Translator = () => {
         }
       }
 
+      const now = Date.now();
+
       if (data.landmarks) {
         drawHand(data.landmarks);
+        setHandDetected(true);
+        // Hand returned — reset no-hand session entirely
+        noHandSinceRef.current = null;
+        noHandWarnShownRef.current = false;
+        if (noHandDismissRef.current) { clearTimeout(noHandDismissRef.current); noHandDismissRef.current = null; }
+        setShowNoHandWarning(false);
       } else {
         const canvas = canvasRef.current;
         if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        setHandDetected(false);
+        // Warn once per absence session after 6 s; auto-dismiss after 2 s
+        if (noHandSinceRef.current === null) noHandSinceRef.current = now;
+        if (now - noHandSinceRef.current >= 6000 && !noHandWarnShownRef.current) {
+          noHandWarnShownRef.current = true;
+          setShowNoHandWarning(true);
+          if (noHandDismissRef.current) clearTimeout(noHandDismissRef.current);
+          noHandDismissRef.current = setTimeout(() => setShowNoHandWarning(false), 2000);
+        }
+        // No hand — reset low-conf session entirely
+        lowConfSinceRef.current = null;
+        lowConfWarnShownRef.current = false;
+        if (lowConfDismissRef.current) { clearTimeout(lowConfDismissRef.current); lowConfDismissRef.current = null; }
+        setShowLowConfWarning(false);
+      }
+
+      // Alphabet / Number specific hold + confidence feedback
+      if (currentMode !== 'word') {
+        const recognized = data.sign && data.sign !== '...' && data.sign !== 'Nothing';
+        setCurrentSign(recognized ? data.sign : '');
+        setSignConfidence(data.confidence || 0);
+        setHoldProgress(data.hold_progress || 0);
+
+        if (data.landmarks) {
+          if (!recognized) {
+            // Warn once per unclear session after 3 s; auto-dismiss after 2 s
+            if (lowConfSinceRef.current === null) lowConfSinceRef.current = now;
+            if (now - lowConfSinceRef.current >= 3000 && !lowConfWarnShownRef.current) {
+              lowConfWarnShownRef.current = true;
+              setShowLowConfWarning(true);
+              if (lowConfDismissRef.current) clearTimeout(lowConfDismissRef.current);
+              lowConfDismissRef.current = setTimeout(() => setShowLowConfWarning(false), 2000);
+            }
+          } else {
+            // Sign recognized — reset low-conf session entirely
+            lowConfSinceRef.current = null;
+            lowConfWarnShownRef.current = false;
+            if (lowConfDismissRef.current) { clearTimeout(lowConfDismissRef.current); lowConfDismissRef.current = null; }
+            setShowLowConfWarning(false);
+          }
+        }
       }
     };
   };
@@ -377,13 +455,90 @@ const Translator = () => {
     if (isRecording && webcamRef.current?.video?.readyState === 4) initSocket();
   };
 
+  // ─────────────────────────────────────────────────────────────────
+  // VOICE TYPING  — Web Speech API (free, browser-native)
+  // ─────────────────────────────────────────────────────────────────
+  const stopVoiceTyping = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.onend = null; // prevent auto-restart
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+  }, []);
+
+  const startVoiceTyping = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+
+    // Map Google Translate code → BCP-47 locale for SpeechRecognition
+    const localeMap = {
+      en:'en-US', si:'si-LK', ta:'ta-IN', hi:'hi-IN', fr:'fr-FR', de:'de-DE',
+      es:'es-ES', it:'it-IT', pt:'pt-PT', ru:'ru-RU', ja:'ja-JP', ko:'ko-KR',
+      zh:'zh-CN', 'zh-CN':'zh-CN', 'zh-TW':'zh-TW', ar:'ar-SA', nl:'nl-NL',
+      pl:'pl-PL', tr:'tr-TR', vi:'vi-VN', th:'th-TH', id:'id-ID', ms:'ms-MY',
+      bn:'bn-IN', uk:'uk-UA', he:'he-IL', fa:'fa-IR', cs:'cs-CZ', hu:'hu-HU',
+      ro:'ro-RO', sv:'sv-SE', da:'da-DK', fi:'fi-FI', no:'nb-NO', el:'el-GR',
+      bg:'bg-BG', hr:'hr-HR', sk:'sk-SK', lt:'lt-LT', lv:'lv-LV', et:'et-EE',
+      sr:'sr-RS', ca:'ca-ES', mk:'mk-MK', gu:'gu-IN', mr:'mr-IN', ml:'ml-IN',
+      kn:'kn-IN', te:'te-IN', pa:'pa-IN', ur:'ur-PK',
+    };
+    const lang = sourceLang && sourceLang !== 'auto'
+      ? (localeMap[sourceLang] || sourceLang)
+      : 'en-US';
+
+    const recognition = new SR();
+    recognition.lang = lang;
+    recognition.continuous = true;
+    recognition.interimResults = false; // append only confirmed words
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setIsListening(true);
+
+    recognition.onresult = (event) => {
+      let transcript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) transcript += event.results[i][0].transcript;
+      }
+      if (transcript) {
+        setInputText(prev => {
+          const sep = prev && !prev.endsWith(' ') ? ' ' : '';
+          return prev + sep + transcript;
+        });
+        setIsFavorited(false);
+      }
+    };
+
+    recognition.onerror = () => { setIsListening(false); recognitionRef.current = null; };
+    recognition.onend = () => { setIsListening(false); recognitionRef.current = null; };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [sourceLang]);
+
+  const toggleVoiceTyping = useCallback(() => {
+    isListening ? stopVoiceTyping() : startVoiceTyping();
+  }, [isListening, startVoiceTyping, stopVoiceTyping]);
+
+  // Stop voice typing whenever user leaves text mode
+  useEffect(() => {
+    if (mode !== 'text') stopVoiceTyping();
+  }, [mode, stopVoiceTyping]);
+
   const stopTranslation = (shouldSave = false) => {
     setIsRecording(false);
     if (socketRef.current) socketRef.current.close();
     if (intervalRef.current) clearInterval(intervalRef.current);
+    if (warningsTimerRef.current) clearTimeout(warningsTimerRef.current);
     const canvas = canvasRef.current;
     if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
     setWordFlash(null); setWordAlternatives([]); setIsCollecting(false); setCollectingFrames(0);
+    setShowNoHandWarning(false); setShowLowConfWarning(false);
+    setHandDetected(true); setHoldProgress(0); setCurrentSign(''); setSignConfidence(0);
+    noHandSinceRef.current = null; lowConfSinceRef.current = null;
+    noHandWarnShownRef.current = false; lowConfWarnShownRef.current = false;
+    if (noHandDismissRef.current) { clearTimeout(noHandDismissRef.current); noHandDismissRef.current = null; }
+    if (lowConfDismissRef.current) { clearTimeout(lowConfDismissRef.current); lowConfDismissRef.current = null; }
     if (shouldSave) saveCurrentSession();
   };
 
@@ -570,6 +725,101 @@ const Translator = () => {
                           </motion.div>
                         )}
                       </AnimatePresence>
+
+                      {/* ── FEEDBACK OVERLAYS (all camera modes) ────────────────── */}
+
+                      {/* 1. NO HAND DETECTED — red warning, all modes (fires after 6s absence) */}
+                      <AnimatePresence>
+                        {showNoHandWarning && !isCollecting && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 6 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute z-30 flex justify-center pointer-events-none inset-x-3 bottom-16 sm:bottom-20"
+                          >
+                            <div className="flex items-center gap-2 px-4 py-2 border rounded-full shadow-xl bg-red-500/90 border-red-400/30 backdrop-blur-md">
+                              <AlertTriangle size={14} className="text-white shrink-0" />
+                              <span className="text-xs font-semibold text-white">No hand detected — move your hand into frame</span>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* 2. LOW CONFIDENCE — yellow warning, alphabet & number only (fires after 3s) */}
+                      <AnimatePresence>
+                        {showLowConfWarning && signMode !== 'word' && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 6 }}
+                            transition={{ duration: 0.25 }}
+                            className="absolute z-30 flex justify-center pointer-events-none inset-x-3 bottom-16 sm:bottom-20"
+                          >
+                            <div className="flex items-center gap-2 px-4 py-2 border rounded-full shadow-xl bg-yellow-500/90 border-yellow-400/30 backdrop-blur-md">
+                              <Eye size={14} className="text-white shrink-0" />
+                              <span className="text-xs font-semibold text-white">
+                                {signConfidence > 0
+                                  ? `Low confidence (${Math.round(signConfidence * 100)}%) — adjust hand position`
+                                  : 'Position unclear — face your palm toward the camera'}
+                              </span>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* 3. SIGN RECOGNIZED + HOLD PROGRESS — alphabet & number only */}
+                      <AnimatePresence>
+                        {handDetected && currentSign !== '' && signMode !== 'word' && (
+                          <motion.div
+                            key={currentSign}
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute z-30 flex justify-center pointer-events-none inset-x-3 bottom-16 sm:bottom-20"
+                          >
+                            <div className="flex items-center gap-3 px-4 py-2 border rounded-full shadow-xl bg-black/70 border-white/10 backdrop-blur-md">
+                              {/* Sign letter / number */}
+                              <span className="text-lg font-extrabold leading-none text-white uppercase">{currentSign}</span>
+                              {/* Confidence dots */}
+                              <ConfidenceDots confidence={signConfidence} />
+                              {/* Hold progress bar pill */}
+                              <div className="flex items-center gap-1.5">
+                                <div className="relative w-20 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                                  <motion.div
+                                    className={`absolute inset-y-0 left-0 rounded-full ${holdProgress >= 1 ? 'bg-green-400' : 'bg-primary'}`}
+                                    animate={{ width: `${holdProgress * 100}%` }}
+                                    transition={{ duration: 0.1 }}
+                                  />
+                                </div>
+                                <span className="text-[10px] text-white/50 tabular-nums w-7">
+                                  {holdProgress >= 1 ? '✓' : `${Math.round(holdProgress * 100)}%`}
+                                </span>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* 4. HOLD PROGRESS BAR — thin strip at very bottom edge of camera */}
+                      <AnimatePresence>
+                        {holdProgress > 0 && signMode !== 'word' && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-x-0 bottom-0 z-30 h-1 overflow-hidden pointer-events-none bg-white/10 rounded-b-3xl"
+                          >
+                            <motion.div
+                              className={`h-full ${holdProgress >= 1 ? 'bg-green-400' : 'bg-primary'}`}
+                              animate={{ width: `${holdProgress * 100}%` }}
+                              transition={{ duration: 0.1 }}
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
                     </motion.div>
                   ) : (
                     <div className="z-10 flex flex-col items-center text-gray-400 transition-transform duration-500 dark:text-gray-500 group-hover:scale-105">
@@ -584,12 +834,52 @@ const Translator = () => {
               )}
 
               {mode === 'text' && (
-                <textarea
-                  value={inputText}
-                  onChange={(e) => { setInputText(e.target.value); setIsFavorited(false); }}
-                  placeholder="Start typing your phrase here..."
-                  className="relative z-10 w-full h-full p-6 text-lg text-gray-900 bg-transparent resize-none sm:p-8 sm:text-xl dark:text-white placeholder-gray-400/80 dark:placeholder-gray-600 focus:outline-none"
-                />
+                <>
+                  <textarea
+                    value={inputText}
+                    onChange={(e) => { setInputText(e.target.value); setIsFavorited(false); }}
+                    placeholder={isListening ? 'Listening… speak now' : 'Start typing or use the mic…'}
+                    className={`relative z-10 w-full h-full p-6 pb-16 text-lg text-gray-900 bg-transparent resize-none sm:p-8 sm:pb-16 sm:text-xl dark:text-white placeholder-gray-400/80 dark:placeholder-gray-600 focus:outline-none transition-all ${isListening ? 'placeholder-red-400 dark:placeholder-red-500' : ''}`}
+                  />
+
+                  {/* Listening badge — top-left */}
+                  <AnimatePresence>
+                    {isListening && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 bg-red-500 rounded-full shadow-lg pointer-events-none"
+                      >
+                        <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                        <span className="text-xs font-semibold text-white">Listening…</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Mic button — bottom-right inside box */}
+                  <div className="absolute z-20 bottom-3 right-3">
+                    {voiceSupported ? (
+                      <button
+                        onClick={toggleVoiceTyping}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-full font-semibold text-sm shadow-lg transition-all duration-200
+                          ${isListening
+                            ? 'bg-red-500 hover:bg-red-600 text-white ring-4 ring-red-500/25'
+                            : 'bg-primary hover:bg-primary/90 text-white ring-4 ring-primary/20'
+                          }`}
+                      >
+                        {isListening
+                          ? <><MicOff size={15} /> Stop</>
+                          : <><Mic size={15} /> Voice Type</>
+                        }
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-full text-xs text-gray-400 border border-gray-200 dark:border-gray-700">
+                        <MicOff size={13} /> Not supported
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
 
               {/* Tips button when not recording */}
