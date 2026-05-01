@@ -1,74 +1,59 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import Webcam from 'react-webcam';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Camera, StopCircle, Volume2, Trash2, Keyboard, Video,
-  CheckCircle, Delete, Type, Hash, MessageSquare, Heart,
-  Clock, X, Star, Lightbulb, Loader2, RotateCcw,
-  AlertTriangle, Eye, Mic, MicOff, ArrowLeft, ArrowRight, BookOpen, Play, Pause
-} from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { featureService, dictionaryService } from '../services/api';
-import LanguageSelector from '../components/LanguageSelector';
 
-// ─────────────────────────────────────────────────────────────────────
-// CONFIDENCE DOTS — visual, readable without text literacy
-// ─────────────────────────────────────────────────────────────────────
-const ConfidenceDots = ({ confidence }) => {
-  const filled = Math.round(confidence * 5);
-  return (
-    <div className="flex items-center gap-0.5">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div
-          key={i}
-          className={`w-2 h-2 rounded-full transition-all duration-300 ${i < filled
-              ? filled >= 4 ? 'bg-green-300' : filled >= 3 ? 'bg-yellow-300' : 'bg-orange-300'
-              : 'bg-white/30'
-            }`}
-        />
-      ))}
-    </div>
-  );
-};
+import ModeSwitcher from '../components/translator/ModeSwitcher';
+import InputPanel from '../components/translator/InputPanel';
+import TextToSignInputPanel from '../components/translator/TextToSignInputPanel';
+import TranslationPanel from '../components/translator/TranslationPanel';
+import TextToSignSidePanel from '../components/translator/TextToSignSidePanel';
+import TipsModal from '../components/translator/TipsModal';
+import SidePanel from '../components/translator/SidePanel';
+import HistoryFavoritesBar from '../components/translator/HistoryFavoritesBar';
+
+const WORD_DEDUP_MS = 2000;
 
 const Translator = () => {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
 
+  // ── Mode ──────────────────────────────────────────────────────────
   const [mode, setMode] = useState('camera');
   const [signMode, setSignMode] = useState('word');
+  const modeRef = useRef('camera');
+  const signModeRef = useRef('word');
+
+  // ── Recording / Translation ───────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
   const [inputText, setInputText] = useState('');
   const [translatedText, setTranslatedText] = useState('...');
-
   const [targetLang, setTargetLang] = useState('si');
   const [sourceLang, setSourceLang] = useState('auto');
-
   const [saveStatus, setSaveStatus] = useState(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const isSpeakingRef = useRef(false);
 
-  // ── Hand / sign feedback state ────────────────────────────────────
+  // ── Hand / sign feedback ──────────────────────────────────────────
   const [handDetected, setHandDetected] = useState(true);
   const [holdProgress, setHoldProgress] = useState(0);
   const [currentSign, setCurrentSign] = useState('');
   const [signConfidence, setSignConfidence] = useState(0);
-  // Time-based warnings — only fire after sustained absence, not on brief transitions
   const [showNoHandWarning, setShowNoHandWarning] = useState(false);
   const [showLowConfWarning, setShowLowConfWarning] = useState(false);
-  const noHandSinceRef = useRef(null);     // ms timestamp when hand first left frame
-  const lowConfSinceRef = useRef(null);    // ms timestamp when low-confidence started
-  const noHandWarnShownRef = useRef(false);  // true once warning fired for this absence session
-  const lowConfWarnShownRef = useRef(false); // true once warning fired for this unclear session
-  const noHandDismissRef = useRef(null);   // setTimeout handle for no-hand auto-dismiss
-  const lowConfDismissRef = useRef(null);  // setTimeout handle for low-conf auto-dismiss
+  const noHandSinceRef = useRef(null);
+  const lowConfSinceRef = useRef(null);
+  const noHandWarnShownRef = useRef(false);
+  const lowConfWarnShownRef = useRef(false);
+  const noHandDismissRef = useRef(null);
+  const lowConfDismissRef = useRef(null);
 
   // ── Voice typing (text mode) ──────────────────────────────────────
   const [isListening, setIsListening] = useState(false);
   const [voiceSupported] = useState(() => !!(window.SpeechRecognition || window.webkitSpeechRecognition));
   const recognitionRef = useRef(null);
 
+  // ── Panels / history / favorites ─────────────────────────────────
   const [activePanel, setActivePanel] = useState(null);
   const [historyItems, setHistoryItems] = useState([]);
   const [favorites, setFavorites] = useState(() => {
@@ -78,27 +63,25 @@ const Translator = () => {
   const [panelLoading, setPanelLoading] = useState(false);
   const [showTips, setShowTips] = useState(false);
 
-  // ── Word mode state ───────────────────────────────────────────────
-  const [wordFlash, setWordFlash] = useState(null);   // {word, confidence} shown on camera
-  const [wordAlternatives, setWordAlternatives] = useState([]); // [{word, confidence}] shown in corner
+  // ── Word mode ─────────────────────────────────────────────────────
+  const [wordFlash, setWordFlash] = useState(null);
+  const [wordAlternatives, setWordAlternatives] = useState([]);
   const [isCollecting, setIsCollecting] = useState(false);
   const [collectingFrames, setCollectingFrames] = useState(0);
-  const [lastWord, setLastWord] = useState(null);   // for undo
+  const [lastWord, setLastWord] = useState(null);
   const wordFlashTimer = useRef(null);
 
+  // ── Refs ──────────────────────────────────────────────────────────
   const socketRef = useRef(null);
   const intervalRef = useRef(null);
   const lastSavedRef = useRef('');
-  const signModeRef = useRef('word');
-  const modeRef = useRef('camera');
-  const pendingSaveRef = useRef(null); // { original, translated, lang, mode, source }
+  const pendingSaveRef = useRef(null);
   const autoSaveTimerRef = useRef(null);
-  // Track last committed word to prevent duplicates within a short window
   const lastCommittedRef = useRef(null);
   const lastCommittedTimeRef = useRef(0);
-  const WORD_DEDUP_MS = 2000; // ignore same word within 2 seconds
+  const translateDebounceRef = useRef(null);
 
-  // ── Text-to-Sign mode state ───────────────────────────────────────
+  // ── Text-to-Sign ──────────────────────────────────────────────────
   const [ttsInput, setTtsInput] = useState('');
   const [ttsTokens, setTtsTokens] = useState([]);
   const [ttsCurrentIdx, setTtsCurrentIdx] = useState(0);
@@ -112,7 +95,7 @@ const Translator = () => {
   const ttsVideoRef = useRef(null);
 
   // ─────────────────────────────────────────────────────────────────
-  // SPEAK  — Google Cloud TTS with browser speechSynthesis fallback
+  // SPEAK
   // ─────────────────────────────────────────────────────────────────
   const browserFallback = useCallback((text) => {
     if (!('speechSynthesis' in window)) return;
@@ -135,7 +118,6 @@ const Translator = () => {
       audio.onerror = () => { URL.revokeObjectURL(url); isSpeakingRef.current = false; setIsSpeaking(false); };
       audio.play();
     } catch (err) {
-      // Unsupported language or service not configured → fall back to browser TTS
       if (err?.fallback) {
         browserFallback(text);
       } else {
@@ -158,11 +140,9 @@ const Translator = () => {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const connections = [
-      [0, 1], [1, 2], [2, 3], [3, 4],
-      [0, 5], [5, 6], [6, 7], [7, 8],
-      [5, 9], [9, 10], [10, 11], [11, 12],
-      [9, 13], [13, 14], [14, 15], [15, 16],
-      [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]
+      [0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+      [5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],
+      [13,17],[0,17],[17,18],[18,19],[19,20],
     ];
     ctx.strokeStyle = '#00FF00';
     ctx.lineWidth = 4;
@@ -182,26 +162,18 @@ const Translator = () => {
   };
 
   // ─────────────────────────────────────────────────────────────────
-  // APPEND WORD — single source of truth, deduplication built in
+  // APPEND WORD
   // ─────────────────────────────────────────────────────────────────
   const appendWord = useCallback((word) => {
     const now = Date.now();
-    // Deduplicate: ignore if same word committed within WORD_DEDUP_MS
-    if (
-      word === lastCommittedRef.current &&
-      now - lastCommittedTimeRef.current < WORD_DEDUP_MS
-    ) return;
-
+    if (word === lastCommittedRef.current && now - lastCommittedTimeRef.current < WORD_DEDUP_MS) return;
     lastCommittedRef.current = word;
     lastCommittedTimeRef.current = now;
     setLastWord(word);
-
     setInputText(prev => {
       if (word.toLowerCase() === 'space') return prev + ' ';
       if (word.toLowerCase() === 'del' || word.toLowerCase() === 'delete') return prev.slice(0, -1);
-      if (signModeRef.current === 'word' && prev.length > 0 && !prev.endsWith(' ')) {
-        return prev + ' ' + word;
-      }
+      if (signModeRef.current === 'word' && prev.length > 0 && !prev.endsWith(' ')) return prev + ' ' + word;
       return prev + word;
     });
     setIsFavorited(false);
@@ -214,9 +186,7 @@ const Translator = () => {
     if (!lastWord) return;
     setInputText(prev => {
       const trimmed = prev.trimEnd();
-      if (trimmed.endsWith(lastWord)) {
-        return trimmed.slice(0, trimmed.length - lastWord.length).trimEnd();
-      }
+      if (trimmed.endsWith(lastWord)) return trimmed.slice(0, trimmed.length - lastWord.length).trimEnd();
       return prev.slice(0, -1);
     });
     setLastWord(null);
@@ -229,7 +199,7 @@ const Translator = () => {
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
   // ─────────────────────────────────────────────────────────────────
-  // SAVE — must be defined before handleTranslate (used in its body/deps)
+  // SAVE
   // ─────────────────────────────────────────────────────────────────
   const saveCurrentSession = useCallback(async () => {
     const p = pendingSaveRef.current;
@@ -269,7 +239,7 @@ const Translator = () => {
     } catch (err) { console.error('Translation error', err); }
   }, [targetLang, sourceLang, speakText, saveCurrentSession]);
 
-  // Debounce translation in text mode
+  // Debounced translation for text mode
   useEffect(() => {
     if (mode === 'text' && inputText) {
       const id = setTimeout(() => handleTranslate(inputText), 800);
@@ -277,6 +247,17 @@ const Translator = () => {
     }
   }, [inputText, targetLang, sourceLang]);
 
+  // Debounced translation for camera mode
+  useEffect(() => {
+    if (mode === 'camera' && inputText) {
+      if (translateDebounceRef.current) clearTimeout(translateDebounceRef.current);
+      translateDebounceRef.current = setTimeout(() => handleTranslate(inputText), 600);
+    }
+  }, [inputText]);
+
+  // ─────────────────────────────────────────────────────────────────
+  // PANELS
+  // ─────────────────────────────────────────────────────────────────
   const openPanel = async (panel) => {
     if (activePanel === panel) { setActivePanel(null); return; }
     setActivePanel(panel);
@@ -306,7 +287,11 @@ const Translator = () => {
     }
   };
 
-  const removeFavorite = (id) => { const u = favorites.filter(f => f.id !== id); setFavorites(u); localStorage.setItem('sb_favorites', JSON.stringify(u)); };
+  const removeFavorite = (id) => {
+    const u = favorites.filter(f => f.id !== id);
+    setFavorites(u);
+    localStorage.setItem('sb_favorites', JSON.stringify(u));
+  };
   const applyHistoryItem = (item) => { setInputText(item.original_text); setTranslatedText(item.translated_text); setActivePanel(null); };
   const applyFavorite = (item) => { setInputText(item.original); setTranslatedText(item.translated); setActivePanel(null); };
 
@@ -317,7 +302,6 @@ const Translator = () => {
     if (socketRef.current) socketRef.current.close();
     if (intervalRef.current) clearInterval(intervalRef.current);
 
-    // Reset all feedback state and timers
     setHandDetected(true); setHoldProgress(0); setCurrentSign(''); setSignConfidence(0);
     setShowNoHandWarning(false); setShowLowConfWarning(false);
     noHandSinceRef.current = null; lowConfSinceRef.current = null;
@@ -339,68 +323,41 @@ const Translator = () => {
 
     socketRef.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      const now = Date.now();
 
-      // ── WORD MODE ─────────────────────────────────────────────────
       if (currentMode === 'word') {
         if (data.collecting) {
           setIsCollecting(true);
           setCollectingFrames(data.frames || 0);
-          // Clear flash while collecting next sign
           setWordFlash(null);
           setWordAlternatives([]);
         }
-
         if (data.ready && data.top3 && data.top3.length > 0) {
           setIsCollecting(false);
           setCollectingFrames(0);
-
           const best = data.top3[0];
           const rest = data.top3.slice(1);
-
-          // ── Append word ONCE via appendWord (dedup protected) ─────
           appendWord(best.word);
-
-          // Show flash on camera
           setWordFlash({ word: best.word, confidence: best.confidence });
           setWordAlternatives(rest);
-
-          // Clear flash after 2.5s
           if (wordFlashTimer.current) clearTimeout(wordFlashTimer.current);
-          wordFlashTimer.current = setTimeout(() => {
-            setWordFlash(null);
-            setWordAlternatives([]);
-          }, 2500);
-
-          // Translate — use functional form to get latest inputText
+          wordFlashTimer.current = setTimeout(() => { setWordFlash(null); setWordAlternatives([]); }, 2500);
           setInputText(prev => {
-            const next = prev.length > 0 && !prev.endsWith(' ')
-              ? prev + ' ' + best.word
-              : prev + best.word;
-            // Only translate once — compare with what appendWord already set
-            // We don't re-append here, just compute next for translate
+            const next = prev.length > 0 && !prev.endsWith(' ') ? prev + ' ' + best.word : prev + best.word;
             setTimeout(() => handleTranslate(next), 300);
-            return prev; // DON'T change state here — appendWord already did it
+            return prev;
           });
         }
-
-        if (!data.collecting && !data.ready) {
-          setIsCollecting(false);
-          setCollectingFrames(0);
-        }
-
-        // ── ALPHABET / NUMBER MODE ────────────────────────────────────
+        if (!data.collecting && !data.ready) { setIsCollecting(false); setCollectingFrames(0); }
       } else {
         if (data.committed && data.sign && data.sign !== '...' && data.sign !== 'Nothing') {
           appendWord(data.sign);
         }
       }
 
-      const now = Date.now();
-
       if (data.landmarks) {
         drawHand(data.landmarks);
         setHandDetected(true);
-        // Hand returned — reset no-hand session entirely
         noHandSinceRef.current = null;
         noHandWarnShownRef.current = false;
         if (noHandDismissRef.current) { clearTimeout(noHandDismissRef.current); noHandDismissRef.current = null; }
@@ -409,7 +366,6 @@ const Translator = () => {
         const canvas = canvasRef.current;
         if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
         setHandDetected(false);
-        // Warn once per absence session after 6 s; auto-dismiss after 2 s
         if (noHandSinceRef.current === null) noHandSinceRef.current = now;
         if (now - noHandSinceRef.current >= 6000 && !noHandWarnShownRef.current) {
           noHandWarnShownRef.current = true;
@@ -417,23 +373,19 @@ const Translator = () => {
           if (noHandDismissRef.current) clearTimeout(noHandDismissRef.current);
           noHandDismissRef.current = setTimeout(() => setShowNoHandWarning(false), 2000);
         }
-        // No hand — reset low-conf session entirely
         lowConfSinceRef.current = null;
         lowConfWarnShownRef.current = false;
         if (lowConfDismissRef.current) { clearTimeout(lowConfDismissRef.current); lowConfDismissRef.current = null; }
         setShowLowConfWarning(false);
       }
 
-      // Alphabet / Number specific hold + confidence feedback
       if (currentMode !== 'word') {
         const recognized = data.sign && data.sign !== '...' && data.sign !== 'Nothing';
         setCurrentSign(recognized ? data.sign : '');
         setSignConfidence(data.confidence || 0);
         setHoldProgress(data.hold_progress || 0);
-
         if (data.landmarks) {
           if (!recognized) {
-            // Warn once per unclear session after 3 s; auto-dismiss after 2 s
             if (lowConfSinceRef.current === null) lowConfSinceRef.current = now;
             if (now - lowConfSinceRef.current >= 3000 && !lowConfWarnShownRef.current) {
               lowConfWarnShownRef.current = true;
@@ -442,7 +394,6 @@ const Translator = () => {
               lowConfDismissRef.current = setTimeout(() => setShowLowConfWarning(false), 2000);
             }
           } else {
-            // Sign recognized — reset low-conf session entirely
             lowConfSinceRef.current = null;
             lowConfWarnShownRef.current = false;
             if (lowConfDismissRef.current) { clearTimeout(lowConfDismissRef.current); lowConfDismissRef.current = null; }
@@ -453,6 +404,9 @@ const Translator = () => {
     };
   };
 
+  // ─────────────────────────────────────────────────────────────────
+  // SIGN MODE CHANGE
+  // ─────────────────────────────────────────────────────────────────
   const handleSignModeChange = (newMode) => {
     if (signMode === newMode) return;
     saveCurrentSession();
@@ -469,11 +423,28 @@ const Translator = () => {
   };
 
   // ─────────────────────────────────────────────────────────────────
-  // VOICE TYPING  — Web Speech API (free, browser-native)
+  // TOP-LEVEL MODE CHANGE
+  // ─────────────────────────────────────────────────────────────────
+  const handleModeChange = (newMode) => {
+    if (mode === newMode) return;
+    saveCurrentSession();
+    pendingSaveRef.current = null;
+    lastSavedRef.current = '';
+    if (newMode !== 'camera') stopTranslation();
+    setMode(newMode);
+    modeRef.current = newMode;
+    setIsRecording(false);
+    setInputText('');
+    setTranslatedText('...');
+    setIsFavorited(false);
+  };
+
+  // ─────────────────────────────────────────────────────────────────
+  // VOICE TYPING (text mode)
   // ─────────────────────────────────────────────────────────────────
   const stopVoiceTyping = useCallback(() => {
     if (recognitionRef.current) {
-      recognitionRef.current.onend = null; // prevent auto-restart
+      recognitionRef.current.onend = null;
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
@@ -483,8 +454,6 @@ const Translator = () => {
   const startVoiceTyping = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
-
-    // Map Google Translate code → BCP-47 locale for SpeechRecognition
     const localeMap = {
       en:'en-US', si:'si-LK', ta:'ta-IN', hi:'hi-IN', fr:'fr-FR', de:'de-DE',
       es:'es-ES', it:'it-IT', pt:'pt-PT', ru:'ru-RU', ja:'ja-JP', ko:'ko-KR',
@@ -496,35 +465,25 @@ const Translator = () => {
       sr:'sr-RS', ca:'ca-ES', mk:'mk-MK', gu:'gu-IN', mr:'mr-IN', ml:'ml-IN',
       kn:'kn-IN', te:'te-IN', pa:'pa-IN', ur:'ur-PK',
     };
-    const lang = sourceLang && sourceLang !== 'auto'
-      ? (localeMap[sourceLang] || sourceLang)
-      : 'en-US';
-
+    const lang = sourceLang && sourceLang !== 'auto' ? (localeMap[sourceLang] || sourceLang) : 'en-US';
     const recognition = new SR();
     recognition.lang = lang;
     recognition.continuous = true;
-    recognition.interimResults = false; // append only confirmed words
+    recognition.interimResults = false;
     recognition.maxAlternatives = 1;
-
     recognition.onstart = () => setIsListening(true);
-
     recognition.onresult = (event) => {
       let transcript = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         if (event.results[i].isFinal) transcript += event.results[i][0].transcript;
       }
       if (transcript) {
-        setInputText(prev => {
-          const sep = prev && !prev.endsWith(' ') ? ' ' : '';
-          return prev + sep + transcript;
-        });
+        setInputText(prev => { const sep = prev && !prev.endsWith(' ') ? ' ' : ''; return prev + sep + transcript; });
         setIsFavorited(false);
       }
     };
-
     recognition.onerror = () => { setIsListening(false); recognitionRef.current = null; };
     recognition.onend = () => { setIsListening(false); recognitionRef.current = null; };
-
     recognitionRef.current = recognition;
     recognition.start();
   }, [sourceLang]);
@@ -533,12 +492,11 @@ const Translator = () => {
     isListening ? stopVoiceTyping() : startVoiceTyping();
   }, [isListening, startVoiceTyping, stopVoiceTyping]);
 
-  // Stop voice typing whenever user leaves text mode
-  useEffect(() => {
-    if (mode !== 'text') stopVoiceTyping();
-  }, [mode, stopVoiceTyping]);
+  useEffect(() => { if (mode !== 'text') stopVoiceTyping(); }, [mode, stopVoiceTyping]);
 
-  // Stop TTS voice and auto-play whenever user leaves text-to-sign mode
+  // ─────────────────────────────────────────────────────────────────
+  // TEXT-TO-SIGN voice typing
+  // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (mode !== 'text-to-sign') {
       if (ttsRecognitionRef.current) {
@@ -552,8 +510,42 @@ const Translator = () => {
     }
   }, [mode]);
 
+  const stopTtsVoiceTyping = useCallback(() => {
+    if (ttsRecognitionRef.current) {
+      ttsRecognitionRef.current.onend = null;
+      ttsRecognitionRef.current.stop();
+      ttsRecognitionRef.current = null;
+    }
+    setTtsIsListening(false);
+  }, []);
+
+  const startTtsVoiceTyping = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const recognition = new SR();
+    recognition.lang = 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onstart = () => setTtsIsListening(true);
+    recognition.onresult = (event) => {
+      let transcript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) transcript += event.results[i][0].transcript;
+      }
+      if (transcript) setTtsInput(prev => { const sep = prev && !prev.endsWith(' ') ? ' ' : ''; return prev + sep + transcript; });
+    };
+    recognition.onerror = () => { setTtsIsListening(false); ttsRecognitionRef.current = null; };
+    recognition.onend = () => { setTtsIsListening(false); ttsRecognitionRef.current = null; };
+    ttsRecognitionRef.current = recognition;
+    recognition.start();
+  }, []);
+
+  const toggleTtsVoice = useCallback(() => {
+    ttsIsListening ? stopTtsVoiceTyping() : startTtsVoiceTyping();
+  }, [ttsIsListening, stopTtsVoiceTyping, startTtsVoiceTyping]);
+
   // ─────────────────────────────────────────────────────────────────
-  // TEXT-TO-SIGN — dictionary lookup
+  // TEXT-TO-SIGN dictionary lookup
   // ─────────────────────────────────────────────────────────────────
   const loadDictEntries = useCallback(async () => {
     if (dictEntriesCacheRef.current) return dictEntriesCacheRef.current;
@@ -566,20 +558,12 @@ const Translator = () => {
   const resolveTextToSign = useCallback(async (text) => {
     const entries = await loadDictEntries();
     const trimmed = text.trim();
-
-    // 1. Full-text sentence match — return immediately if found
-    const sentenceEntry = entries.find(
-      e => e.label.toLowerCase() === trimmed.toLowerCase() && e.category === 'sentence'
-    );
+    const sentenceEntry = entries.find(e => e.label.toLowerCase() === trimmed.toLowerCase() && e.category === 'sentence');
     if (sentenceEntry) return [{ label: trimmed, entry: sentenceEntry }];
-
-    // 2. Word-by-word, with letter fallback
     const words = trimmed.toLowerCase().split(/\s+/).filter(Boolean);
     const result = [];
     for (const word of words) {
-      const wordEntry = entries.find(
-        e => e.label.toLowerCase() === word && (e.category === 'word' || e.category === 'sentence')
-      );
+      const wordEntry = entries.find(e => e.label.toLowerCase() === word && (e.category === 'word' || e.category === 'sentence'));
       if (wordEntry) {
         result.push({ label: word, entry: wordEntry });
       } else {
@@ -615,11 +599,11 @@ const Translator = () => {
     }
   }, [ttsInput, resolveTextToSign]);
 
-  // Auto-advance: fires for image/not-found tokens; videos use onEnded
+  // Auto-advance for image / not-found tokens
   useEffect(() => {
     if (!ttsAutoPlaying || ttsTokens.length === 0) return;
     const current = ttsTokens[ttsCurrentIdx];
-    if (current?.entry?.media_type === 'video') return; // handled by onEnded
+    if (current?.entry?.media_type === 'video') return;
     const delay = current?.entry ? 2000 : 1200;
     ttsAutoPlayTimerRef.current = setTimeout(() => {
       if (ttsCurrentIdx < ttsTokens.length - 1) {
@@ -631,43 +615,9 @@ const Translator = () => {
     return () => clearTimeout(ttsAutoPlayTimerRef.current);
   }, [ttsAutoPlaying, ttsCurrentIdx, ttsTokens]);
 
-  const stopTtsVoiceTyping = useCallback(() => {
-    if (ttsRecognitionRef.current) {
-      ttsRecognitionRef.current.onend = null;
-      ttsRecognitionRef.current.stop();
-      ttsRecognitionRef.current = null;
-    }
-    setTtsIsListening(false);
-  }, []);
-
-  const startTtsVoiceTyping = useCallback(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-    const recognition = new SR();
-    recognition.lang = 'en-US';
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.onstart = () => setTtsIsListening(true);
-    recognition.onresult = (event) => {
-      let transcript = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) transcript += event.results[i][0].transcript;
-      }
-      if (transcript) setTtsInput(prev => {
-        const sep = prev && !prev.endsWith(' ') ? ' ' : '';
-        return prev + sep + transcript;
-      });
-    };
-    recognition.onerror = () => { setTtsIsListening(false); ttsRecognitionRef.current = null; };
-    recognition.onend = () => { setTtsIsListening(false); ttsRecognitionRef.current = null; };
-    ttsRecognitionRef.current = recognition;
-    recognition.start();
-  }, []);
-
-  const toggleTtsVoice = useCallback(() => {
-    ttsIsListening ? stopTtsVoiceTyping() : startTtsVoiceTyping();
-  }, [ttsIsListening, stopTtsVoiceTyping, startTtsVoiceTyping]);
-
+  // ─────────────────────────────────────────────────────────────────
+  // RECORDING CONTROLS
+  // ─────────────────────────────────────────────────────────────────
   const stopTranslation = (shouldSave = false) => {
     setIsRecording(false);
     if (socketRef.current) socketRef.current.close();
@@ -686,6 +636,8 @@ const Translator = () => {
 
   const toggleRecording = () => isRecording ? stopTranslation(true) : setIsRecording(true);
 
+  const handleCameraError = () => { alert('Camera Blocked or Not Found'); setIsRecording(false); };
+
   const clearAll = () => {
     saveCurrentSession();
     if (autoSaveTimerRef.current) { clearTimeout(autoSaveTimerRef.current); autoSaveTimerRef.current = null; }
@@ -696,16 +648,7 @@ const Translator = () => {
     lastCommittedRef.current = null; lastCommittedTimeRef.current = 0;
   };
 
-  // Translate when inputText changes in word/alphabet/number mode (debounced)
-  const translateDebounceRef = useRef(null);
-  useEffect(() => {
-    if (mode === 'camera' && inputText) {
-      if (translateDebounceRef.current) clearTimeout(translateDebounceRef.current);
-      translateDebounceRef.current = setTimeout(() => handleTranslate(inputText), 600);
-    }
-  }, [inputText]);
-
-  // Save on page leave (browser close/refresh) and component unmount (SPA navigation)
+  // Save on page leave / unmount
   useEffect(() => {
     window.addEventListener('beforeunload', saveCurrentSession);
     return () => {
@@ -724,954 +667,121 @@ const Translator = () => {
       <main className="flex-grow p-4 md:p-8">
         <div className="grid grid-cols-1 gap-8 mx-auto max-w-7xl lg:grid-cols-2">
 
-          {/* ══════════════════════════════════════════════════════════
-              LEFT COLUMN
-          ══════════════════════════════════════════════════════════ */}
+          {/* LEFT COLUMN */}
           <div className="flex flex-col gap-4 sm:gap-6">
+            <ModeSwitcher
+              mode={mode}
+              signMode={signMode}
+              onModeChange={handleModeChange}
+              onSignModeChange={handleSignModeChange}
+            />
 
-            {/* Mode Switcher */}
-            <div className="flex flex-col gap-3">
-              <div className="inline-flex flex-wrap justify-center p-1 sm:p-1.5 bg-gray-200/50 dark:bg-gray-800/50 backdrop-blur-md rounded-2xl sm:rounded-full shadow-inner border border-gray-200/50 dark:border-gray-700/50 w-full sm:w-fit">
-                <button
-                  onClick={() => { if (mode !== 'camera') { saveCurrentSession(); pendingSaveRef.current = null; lastSavedRef.current = ''; setMode('camera'); setIsRecording(false); setInputText(''); setTranslatedText('...'); setIsFavorited(false); } }}
-                  className={`flex-1 sm:flex-none flex justify-center items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${mode === 'camera' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
-                >
-                  <Video size={14} /> <span>Sign to Text</span>
-                </button>
-                <button
-                  onClick={() => { if (mode !== 'text-to-sign') { saveCurrentSession(); pendingSaveRef.current = null; lastSavedRef.current = ''; stopTranslation(); setMode('text-to-sign'); setInputText(''); setTranslatedText('...'); setIsFavorited(false); } }}
-                  className={`flex-1 sm:flex-none flex justify-center items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${mode === 'text-to-sign' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
-                >
-                  <BookOpen size={14} /> <span>Text to Sign</span>
-                </button>
-                <button
-                  onClick={() => { if (mode !== 'text') { saveCurrentSession(); pendingSaveRef.current = null; lastSavedRef.current = ''; setMode('text'); stopTranslation(); setInputText(''); setTranslatedText('...'); setIsFavorited(false); } }}
-                  className={`flex-1 sm:flex-none flex justify-center items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${mode === 'text' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
-                >
-                  <Keyboard size={14} /> <span>Text Mode</span>
-                </button>
-              </div>
-
-              <AnimatePresence>
-                {mode === 'camera' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10, height: 0 }}
-                    animate={{ opacity: 1, y: 0, height: 'auto' }}
-                    exit={{ opacity: 0, y: -10, height: 0 }}
-                    className="inline-flex flex-wrap justify-center p-1 bg-indigo-50/50 dark:bg-[#1e293b]/50 backdrop-blur-md rounded-2xl sm:rounded-full shadow-sm border border-indigo-100/50 dark:border-gray-700/50 w-full sm:w-fit overflow-hidden"
-                  >
-                    {[
-                      { id: 'word', label: 'Word Mode', icon: MessageSquare },
-                      { id: 'alphabet', label: 'Alphabet Mode', icon: Type },
-                      { id: 'number', label: 'Number Mode', icon: Hash },
-                    ].map(({ id, label, icon: Icon }) => (
-                      <button
-                        key={id}
-                        onClick={() => handleSignModeChange(id)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-300 ${signMode === id ? 'bg-primary text-white shadow-md' : 'text-gray-600 hover:text-primary dark:text-gray-400 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-700/50'}`}
-                      >
-                        <Icon size={14} /> {label}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* ── CAMERA BOX / TEXT-TO-SIGN PANEL ── */}
             {mode === 'text-to-sign' ? (
-              <div className="flex flex-col gap-3">
-                {/* Input area */}
-                <div className="relative bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700/30 rounded-2xl overflow-hidden shadow-sm">
-                  <textarea
-                    value={ttsInput}
-                    onChange={(e) => { setTtsInput(e.target.value); if (ttsTokens.length > 0) setTtsTokens([]); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTextToSignSubmit(); } }}
-                    placeholder={ttsIsListening ? 'Listening… speak now' : 'Type text to convert to signs…'}
-                    rows={3}
-                    className={`w-full p-4 sm:p-5 pb-14 text-base sm:text-lg text-gray-900 bg-transparent resize-none dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none ${ttsIsListening ? 'placeholder-red-400 dark:placeholder-red-500' : ''}`}
-                  />
-                  <AnimatePresence>
-                    {ttsIsListening && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 bg-red-500 rounded-full pointer-events-none shadow-lg"
-                      >
-                        <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                        <span className="text-xs font-semibold text-white">Listening…</span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  <div className="absolute bottom-3 inset-x-3 flex items-center gap-2">
-                    {voiceSupported && (
-                      <button
-                        onClick={toggleTtsVoice}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold transition-all duration-200 ${ttsIsListening ? 'bg-red-500 hover:bg-red-600 text-white ring-4 ring-red-500/25' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                      >
-                        {ttsIsListening ? <><MicOff size={13} /> Stop</> : <><Mic size={13} /> Voice</>}
-                      </button>
-                    )}
-                    <button
-                      onClick={handleTextToSignSubmit}
-                      disabled={!ttsInput.trim() || ttsLoading}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-primary to-purple-500 text-white rounded-full text-xs font-bold shadow-md disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg transition-all duration-200"
-                    >
-                      {ttsLoading
-                        ? <><Loader2 size={13} className="animate-spin" /> Looking up…</>
-                        : <><BookOpen size={13} /> Show Signs</>
-                      }
-                    </button>
-                  </div>
-                </div>
-
-                {/* Token strip */}
-                <AnimatePresence>
-                  {ttsTokens.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      className="flex gap-2 overflow-x-auto pb-1 snap-x"
-                    >
-                      {ttsTokens.map((token, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setTtsCurrentIdx(i)}
-                          className={`flex-shrink-0 snap-start flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl text-xs font-semibold border-2 transition-all duration-200 ${
-                            i === ttsCurrentIdx
-                              ? 'border-primary bg-primary/10 text-primary dark:bg-primary/20'
-                              : token.entry
-                              ? 'border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:border-green-400 dark:hover:border-green-500'
-                              : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
-                          }`}
-                        >
-                          <span className="font-extrabold uppercase tracking-wide">{token.label}</span>
-                          <span className="text-[9px] opacity-60 font-normal leading-none">
-                            {token.entry ? (token.entry.media_type === 'video' ? '▶ vid' : '◉ img') : '—'}
-                          </span>
-                        </button>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Media display */}
-                <AnimatePresence>
-                  {ttsTokens.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.98 }}
-                      className="relative flex items-center justify-center overflow-hidden border shadow-2xl bg-gray-900 border-gray-700/50 rounded-3xl aspect-video"
-                    >
-                      <AnimatePresence mode="wait">
-                        {ttsTokens[ttsCurrentIdx]?.entry ? (
-                          <motion.div
-                            key={`media-${ttsCurrentIdx}`}
-                            initial={{ opacity: 0, scale: 0.97 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 1.02 }}
-                            transition={{ duration: 0.2 }}
-                            className="absolute inset-0 flex items-center justify-center bg-gray-900"
-                          >
-                            {ttsTokens[ttsCurrentIdx].entry.media_type === 'video' ? (
-                              <video
-                                ref={ttsVideoRef}
-                                key={`v-${ttsCurrentIdx}`}
-                                src={ttsTokens[ttsCurrentIdx].entry.media_url}
-                                autoPlay
-                                loop={!ttsAutoPlaying}
-                                muted
-                                playsInline
-                                onEnded={() => {
-                                  if (!ttsAutoPlaying) return;
-                                  if (ttsCurrentIdx < ttsTokens.length - 1) {
-                                    setTtsCurrentIdx(i => i + 1);
-                                  } else {
-                                    setTtsAutoPlaying(false);
-                                  }
-                                }}
-                                className="w-full h-full object-contain"
-                              />
-                            ) : (
-                              <img
-                                src={ttsTokens[ttsCurrentIdx].entry.media_url}
-                                alt={`Sign for ${ttsTokens[ttsCurrentIdx].label}`}
-                                className="w-full h-full object-contain"
-                              />
-                            )}
-                          </motion.div>
-                        ) : (
-                          <motion.div
-                            key={`empty-${ttsCurrentIdx}`}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="flex flex-col items-center gap-2 text-gray-400 dark:text-gray-500 px-6 text-center"
-                          >
-                            <BookOpen size={40} className="opacity-30 mb-1" />
-                            <p className="text-sm font-semibold">
-                              No sign for "<span className="uppercase">{ttsTokens[ttsCurrentIdx]?.label}</span>"
-                            </p>
-                            <p className="text-xs opacity-60">Not in the dictionary yet</p>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      {/* Label overlay */}
-                      <div className="absolute top-3 left-3 z-10 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-full border border-white/10 shadow-lg">
-                        <span className="text-white text-sm font-bold uppercase tracking-wide">
-                          {ttsTokens[ttsCurrentIdx]?.label}
-                        </span>
-                      </div>
-
-                      {/* Counter */}
-                      <div className="absolute top-3 right-3 z-10 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-full border border-white/10 shadow-lg">
-                        <span className="text-white text-xs font-medium tabular-nums">
-                          {ttsCurrentIdx + 1} / {ttsTokens.length}
-                        </span>
-                      </div>
-
-                      {/* Navigation */}
-                      <div className="absolute inset-x-0 bottom-3 z-10 flex justify-center items-center gap-2">
-                        <button
-                          onClick={() => { clearTimeout(ttsAutoPlayTimerRef.current); setTtsAutoPlaying(false); setTtsCurrentIdx(i => Math.max(0, i - 1)); }}
-                          disabled={ttsCurrentIdx === 0}
-                          className="p-2.5 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full border border-white/10 text-white disabled:opacity-30 transition-all duration-200 shadow-lg"
-                        >
-                          <ArrowLeft size={16} />
-                        </button>
-                        {ttsTokens.length > 1 && (
-                          <button
-                            onClick={() => {
-                              if (ttsAutoPlaying) {
-                                clearTimeout(ttsAutoPlayTimerRef.current);
-                                setTtsAutoPlaying(false);
-                              } else {
-                                if (ttsCurrentIdx >= ttsTokens.length - 1) setTtsCurrentIdx(0);
-                                setTtsAutoPlaying(true);
-                              }
-                            }}
-                            className="flex items-center gap-1.5 px-4 py-2.5 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full border border-white/10 text-white transition-all duration-200 shadow-lg text-xs font-semibold"
-                          >
-                            {ttsAutoPlaying ? <><Pause size={14} /> Pause</> : <><Play size={14} /> Play All</>}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => { clearTimeout(ttsAutoPlayTimerRef.current); setTtsAutoPlaying(false); setTtsCurrentIdx(i => Math.min(ttsTokens.length - 1, i + 1)); }}
-                          disabled={ttsCurrentIdx === ttsTokens.length - 1}
-                          className="p-2.5 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full border border-white/10 text-white disabled:opacity-30 transition-all duration-200 shadow-lg"
-                        >
-                          <ArrowRight size={16} />
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Error */}
-                <AnimatePresence>
-                  {ttsError && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 rounded-xl"
-                    >
-                      <AlertTriangle size={15} className="text-red-500 shrink-0" />
-                      <p className="text-xs text-red-600 dark:text-red-400">{ttsError}</p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Empty state */}
-                {ttsTokens.length === 0 && !ttsLoading && !ttsError && (
-                  <div className="flex flex-col items-center gap-3 py-10 sm:py-12 text-gray-400 dark:text-gray-500 border-2 border-dashed border-gray-200 dark:border-gray-700/50 rounded-3xl">
-                    <BookOpen size={44} className="opacity-20" />
-                    <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">Enter text above and tap Show Signs</p>
-                    <p className="text-xs opacity-70 text-center px-6 leading-relaxed">
-                      Words are matched from the sign dictionary.<br />Unknown words fall back to letter-by-letter.
-                    </p>
-                  </div>
-                )}
-              </div>
+              <TextToSignInputPanel
+                ttsInput={ttsInput}
+                setTtsInput={setTtsInput}
+                ttsTokens={ttsTokens}
+                setTtsTokens={setTtsTokens}
+                ttsCurrentIdx={ttsCurrentIdx}
+                setTtsCurrentIdx={setTtsCurrentIdx}
+                ttsLoading={ttsLoading}
+                ttsIsListening={ttsIsListening}
+                ttsError={ttsError}
+                ttsAutoPlaying={ttsAutoPlaying}
+                setTtsAutoPlaying={setTtsAutoPlaying}
+                ttsAutoPlayTimerRef={ttsAutoPlayTimerRef}
+                ttsVideoRef={ttsVideoRef}
+                voiceSupported={voiceSupported}
+                toggleTtsVoice={toggleTtsVoice}
+                handleTextToSignSubmit={handleTextToSignSubmit}
+              />
             ) : (
-            <div className="relative flex items-center justify-center overflow-hidden border shadow-2xl bg-gray-100/50 border-gray-200/50 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-3xl aspect-video backdrop-blur-sm group">
-              <div className="absolute inset-0 z-0 pointer-events-none rounded-3xl ring-1 ring-inset ring-black/5 dark:ring-white/5" />
-
-              {mode === 'camera' && (
-                <>
-                  {isRecording ? (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-0 w-full h-full">
-                      <Webcam
-                        audio={false}
-                        ref={webcamRef}
-                        screenshotFormat="image/jpeg"
-                        onUserMedia={initSocket}
-                        onUserMediaError={() => { alert('Camera Blocked or Not Found'); setIsRecording(false); }}
-                        videoConstraints={{ width: 640, height: 480, facingMode: 'user' }}
-                        className="absolute inset-0 z-0 object-cover w-full h-full transform scale-x-[-1]"
-                      />
-                      <canvas ref={canvasRef} className="absolute inset-0 z-10 object-cover w-full h-full pointer-events-none" />
-
-                      {/* TOP ROW: Tips (left) + LIVE badge (right) — no overlap */}
-                      <div className="absolute z-30 top-3 left-3">
-                        <button
-                          onClick={() => setShowTips(true)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-full border border-white/10 text-white hover:bg-black/70 transition-all shadow-sm"
-                        >
-                          <Lightbulb size={13} className="text-yellow-400" />
-                          <span className="text-xs font-semibold">Tips</span>
-                        </button>
-                      </div>
-                      <div className="absolute top-3 right-3 z-30 flex items-center gap-2 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-full border border-white/10 shadow-lg">
-                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                        <span className="text-xs font-medium tracking-wide text-white uppercase">Live</span>
-                      </div>
-
-                      {/* CENTER: Collecting indicator */}
-                      <AnimatePresence>
-                        {signMode === 'word' && isCollecting && (
-                          <motion.div
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.9 }}
-                            className="absolute inset-x-0 z-30 flex justify-center -translate-y-1/2 pointer-events-none top-1/2"
-                          >
-                            <div className="flex items-center gap-2 px-4 py-2 border rounded-full shadow-xl bg-black/70 backdrop-blur-md border-white/10">
-                              <Loader2 size={14} className="text-primary animate-spin" />
-                              <span className="text-xs font-semibold text-white">
-                                Recording... {collectingFrames} frames
-                              </span>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      {/* BOTTOM-CENTER: Word flash — sits ABOVE the stop button with margin */}
-                      <AnimatePresence>
-                        {signMode === 'word' && wordFlash && !isCollecting && (
-                          <motion.div
-                            key={wordFlash.word + wordFlash.confidence}
-                            initial={{ opacity: 0, y: 8, scale: 0.9 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -6, scale: 0.95 }}
-                            transition={{ duration: 0.2 }}
-                            className="absolute inset-x-0 z-30 flex justify-center pointer-events-none bottom-20 sm:bottom-24"
-                          >
-                            <div className="flex items-center gap-2 px-4 py-2 border rounded-full shadow-xl bg-green-500/90 backdrop-blur-md border-green-400/30">
-                              <CheckCircle size={15} className="text-white shrink-0" />
-                              <span className="text-sm font-bold text-white capitalize">{wordFlash.word}</span>
-                              <ConfidenceDots confidence={wordFlash.confidence} />
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      {/* BOTTOM-RIGHT: Alternative words — above stop button, right edge */}
-                      <AnimatePresence>
-                        {signMode === 'word' && wordAlternatives.length > 0 && !isCollecting && (
-                          <motion.div
-                            initial={{ opacity: 0, x: 8 }}
-                            animate={{ opacity: 0.8, x: 0 }}
-                            exit={{ opacity: 0, x: 8 }}
-                            className="absolute z-30 flex flex-col items-end gap-1 pointer-events-none bottom-20 sm:bottom-24 right-3"
-                          >
-                            <span className="text-[9px] text-white/40 uppercase tracking-widest mb-0.5">Alt.</span>
-                            {wordAlternatives.map((alt, i) => (
-                              <div
-                                key={i}
-                                className="flex items-center gap-1.5 px-2.5 py-1 bg-black/55 backdrop-blur-sm rounded-full border border-white/10"
-                              >
-                                <span className="text-xs capitalize text-white/70">{alt.word}</span>
-                                <span className="text-[10px] text-white/35">{Math.round(alt.confidence * 100)}%</span>
-                              </div>
-                            ))}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      {/* ── FEEDBACK OVERLAYS (all camera modes) ────────────────── */}
-
-                      {/* 1. NO HAND DETECTED — red warning, all modes (fires after 6s absence) */}
-                      <AnimatePresence>
-                        {showNoHandWarning && !isCollecting && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 6 }}
-                            transition={{ duration: 0.2 }}
-                            className="absolute z-30 flex justify-center pointer-events-none inset-x-3 bottom-16 sm:bottom-20"
-                          >
-                            <div className="flex items-center gap-2 px-4 py-2 border rounded-full shadow-xl bg-red-500/90 border-red-400/30 backdrop-blur-md">
-                              <AlertTriangle size={14} className="text-white shrink-0" />
-                              <span className="text-xs font-semibold text-white">No hand detected — move your hand into frame</span>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      {/* 2. LOW CONFIDENCE — yellow warning, alphabet & number only (fires after 3s) */}
-                      <AnimatePresence>
-                        {showLowConfWarning && signMode !== 'word' && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 6 }}
-                            transition={{ duration: 0.25 }}
-                            className="absolute z-30 flex justify-center pointer-events-none inset-x-3 bottom-16 sm:bottom-20"
-                          >
-                            <div className="flex items-center gap-2 px-4 py-2 border rounded-full shadow-xl bg-yellow-500/90 border-yellow-400/30 backdrop-blur-md">
-                              <Eye size={14} className="text-white shrink-0" />
-                              <span className="text-xs font-semibold text-white">
-                                {signConfidence > 0
-                                  ? `Low confidence (${Math.round(signConfidence * 100)}%) — adjust hand position`
-                                  : 'Position unclear — face your palm toward the camera'}
-                              </span>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      {/* 3. SIGN RECOGNIZED + HOLD PROGRESS — alphabet & number only */}
-                      <AnimatePresence>
-                        {handDetected && currentSign !== '' && signMode !== 'word' && (
-                          <motion.div
-                            key={currentSign}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.9 }}
-                            transition={{ duration: 0.15 }}
-                            className="absolute z-30 flex justify-center pointer-events-none inset-x-3 bottom-16 sm:bottom-20"
-                          >
-                            <div className="flex items-center gap-3 px-4 py-2 border rounded-full shadow-xl bg-black/70 border-white/10 backdrop-blur-md">
-                              {/* Sign letter / number */}
-                              <span className="text-lg font-extrabold leading-none text-white uppercase">{currentSign}</span>
-                              {/* Confidence dots */}
-                              <ConfidenceDots confidence={signConfidence} />
-                              {/* Hold progress bar pill */}
-                              <div className="flex items-center gap-1.5">
-                                <div className="relative w-20 h-1.5 bg-white/20 rounded-full overflow-hidden">
-                                  <motion.div
-                                    className={`absolute inset-y-0 left-0 rounded-full ${holdProgress >= 1 ? 'bg-green-400' : 'bg-primary'}`}
-                                    animate={{ width: `${holdProgress * 100}%` }}
-                                    transition={{ duration: 0.1 }}
-                                  />
-                                </div>
-                                <span className="text-[10px] text-white/50 tabular-nums w-7">
-                                  {holdProgress >= 1 ? '✓' : `${Math.round(holdProgress * 100)}%`}
-                                </span>
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      {/* 4. HOLD PROGRESS BAR — thin strip at very bottom edge of camera */}
-                      <AnimatePresence>
-                        {holdProgress > 0 && signMode !== 'word' && (
-                          <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-x-0 bottom-0 z-30 h-1 overflow-hidden pointer-events-none bg-white/10 rounded-b-3xl"
-                          >
-                            <motion.div
-                              className={`h-full ${holdProgress >= 1 ? 'bg-green-400' : 'bg-primary'}`}
-                              animate={{ width: `${holdProgress * 100}%` }}
-                              transition={{ duration: 0.1 }}
-                            />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                    </motion.div>
-                  ) : (
-                    <div className="z-10 flex flex-col items-center text-gray-400 transition-transform duration-500 dark:text-gray-500 group-hover:scale-105">
-                      <div className="flex items-center justify-center w-16 h-16 mb-4 bg-white border border-gray-100 rounded-full shadow-sm sm:w-20 sm:h-20 dark:bg-gray-800 dark:border-gray-700">
-                        <Camera className="w-8 h-8 text-gray-300 sm:w-10 sm:h-10 dark:text-gray-600" />
-                      </div>
-                      <p className="text-base font-medium text-gray-800 sm:text-lg dark:text-gray-300">Ready to translate</p>
-                      <p className="px-4 mt-1 text-xs text-center sm:text-sm opacity-70">Turn on camera to begin signing</p>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {mode === 'text' && (
-                <>
-                  <textarea
-                    value={inputText}
-                    onChange={(e) => { setInputText(e.target.value); setIsFavorited(false); }}
-                    placeholder={isListening ? 'Listening… speak now' : 'Start typing or use the mic…'}
-                    className={`relative z-10 w-full h-full p-6 pb-16 text-lg text-gray-900 bg-transparent resize-none sm:p-8 sm:pb-16 sm:text-xl dark:text-white placeholder-gray-400/80 dark:placeholder-gray-600 focus:outline-none transition-all ${isListening ? 'placeholder-red-400 dark:placeholder-red-500' : ''}`}
-                  />
-
-                  {/* Listening badge — top-left */}
-                  <AnimatePresence>
-                    {isListening && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 bg-red-500 rounded-full shadow-lg pointer-events-none"
-                      >
-                        <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                        <span className="text-xs font-semibold text-white">Listening…</span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Mic button — bottom-right inside box */}
-                  <div className="absolute z-20 bottom-3 right-3">
-                    {voiceSupported ? (
-                      <button
-                        onClick={toggleVoiceTyping}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-full font-semibold text-sm shadow-lg transition-all duration-200
-                          ${isListening
-                            ? 'bg-red-500 hover:bg-red-600 text-white ring-4 ring-red-500/25'
-                            : 'bg-primary hover:bg-primary/90 text-white ring-4 ring-primary/20'
-                          }`}
-                      >
-                        {isListening
-                          ? <><MicOff size={15} /> Stop</>
-                          : <><Mic size={15} /> Voice Type</>
-                        }
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-full text-xs text-gray-400 border border-gray-200 dark:border-gray-700">
-                        <MicOff size={13} /> Not supported
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* Tips button when not recording */}
-              {mode === 'camera' && !isRecording && (
-                <div className="absolute z-30 top-3 left-3">
-                  <button
-                    onClick={() => setShowTips(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md rounded-full border border-white/40 dark:border-white/10 text-gray-800 dark:text-gray-200 hover:bg-white/60 transition-all shadow-sm"
-                  >
-                    <Lightbulb size={13} className="text-yellow-500 dark:text-yellow-400" />
-                    <span className="text-xs font-semibold">Tips</span>
-                  </button>
-                </div>
-              )}
-
-              {/* STOP / START button — always at bottom, full width on mobile */}
-              {mode === 'camera' && (
-                <div className="absolute inset-x-0 z-30 flex justify-center px-4 bottom-3 sm:bottom-4">
-                  <button
-                    onClick={toggleRecording}
-                    className={`flex items-center gap-2 px-6 sm:px-8 py-3 rounded-full font-bold shadow-2xl transition-all duration-300 text-sm text-white
-                      ${isRecording
-                        ? 'bg-red-500 hover:bg-red-600 shadow-red-500/40 ring-4 ring-red-500/20'
-                        : 'bg-gradient-to-r from-primary via-purple-500 to-primary shadow-primary/40 ring-4 ring-primary/20 hover:shadow-primary/60'
-                      }`}
-                  >
-                    {isRecording
-                      ? <><StopCircle size={18} /> Stop Translation</>
-                      : <><Camera size={18} /> Start Signing</>
-                    }
-                  </button>
-                </div>
-              )}
-            </div>
+              <InputPanel
+                mode={mode}
+                signMode={signMode}
+                isRecording={isRecording}
+                webcamRef={webcamRef}
+                canvasRef={canvasRef}
+                initSocket={initSocket}
+                onCameraError={handleCameraError}
+                toggleRecording={toggleRecording}
+                setShowTips={setShowTips}
+                isCollecting={isCollecting}
+                collectingFrames={collectingFrames}
+                wordFlash={wordFlash}
+                wordAlternatives={wordAlternatives}
+                showNoHandWarning={showNoHandWarning}
+                showLowConfWarning={showLowConfWarning}
+                handDetected={handDetected}
+                currentSign={currentSign}
+                signConfidence={signConfidence}
+                holdProgress={holdProgress}
+                inputText={inputText}
+                setInputText={setInputText}
+                setIsFavorited={setIsFavorited}
+                isListening={isListening}
+                voiceSupported={voiceSupported}
+                toggleVoiceTyping={toggleVoiceTyping}
+              />
             )}
           </div>
 
-          {/* ══════════════════════════════════════════════════════════
-              RIGHT COLUMN
-          ══════════════════════════════════════════════════════════ */}
+          {/* RIGHT COLUMN */}
           <div className="flex flex-col gap-4">
-
             {mode === 'text-to-sign' ? (
-              <div className="flex flex-col gap-4">
-                {/* Stats */}
-                {ttsTokens.length > 0 && (
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/30 rounded-2xl text-center">
-                      <p className="text-2xl font-extrabold text-green-600 dark:text-green-400">{ttsTokens.filter(t => t.entry).length}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Found</p>
-                    </div>
-                    <div className="p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/40 rounded-2xl text-center">
-                      <p className="text-2xl font-extrabold text-gray-400">{ttsTokens.filter(t => !t.entry).length}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Not found</p>
-                    </div>
-                    <div className="p-3 bg-primary/10 border border-primary/20 rounded-2xl text-center">
-                      <p className="text-2xl font-extrabold text-primary">{ttsTokens.length}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Total</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Current sign info */}
-                <div className="p-4 sm:p-5 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700/30 rounded-2xl shadow-sm">
-                  <h3 className="text-xs font-bold tracking-widest text-gray-500 dark:text-gray-400/80 uppercase mb-3">Current Sign</h3>
-                  {ttsTokens.length === 0 ? (
-                    <div className="flex flex-col items-center gap-2 py-6 text-gray-300 dark:text-gray-600">
-                      <BookOpen size={28} className="opacity-40" />
-                      <p className="text-xs text-center text-gray-400 dark:text-gray-500">Results will appear here</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-3xl font-extrabold text-gray-900 dark:text-white uppercase tracking-wide">
-                          {ttsTokens[ttsCurrentIdx]?.label}
-                        </span>
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full mt-1 shrink-0 ${ttsTokens[ttsCurrentIdx]?.entry ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}>
-                          {ttsTokens[ttsCurrentIdx]?.entry ? '✓ Found' : '✗ Not found'}
-                        </span>
-                      </div>
-                      {ttsTokens[ttsCurrentIdx]?.entry && (
-                        <div className="flex flex-wrap gap-2">
-                          <span className="px-2.5 py-1 text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full capitalize">
-                            {ttsTokens[ttsCurrentIdx].entry.category}
-                          </span>
-                          <span className="px-2.5 py-1 text-xs font-medium bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full capitalize">
-                            {ttsTokens[ttsCurrentIdx].entry.media_type}
-                          </span>
-                        </div>
-                      )}
-                      <p className="text-xs text-gray-400">{ttsCurrentIdx + 1} of {ttsTokens.length} signs</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* All tokens list */}
-                {ttsTokens.length > 0 && (
-                  <div className="p-4 sm:p-5 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700/30 rounded-2xl shadow-sm">
-                    <h3 className="text-xs font-bold tracking-widest text-gray-500 dark:text-gray-400/80 uppercase mb-3">All Signs</h3>
-                    <div className="space-y-1 max-h-52 overflow-y-auto pr-1">
-                      {ttsTokens.map((token, i) => (
-                        <motion.button
-                          key={i}
-                          initial={{ opacity: 0, x: -4 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.02 }}
-                          onClick={() => setTtsCurrentIdx(i)}
-                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all duration-150 ${i === ttsCurrentIdx ? 'bg-primary/10 dark:bg-primary/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
-                        >
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${token.entry ? 'bg-green-400' : 'bg-gray-300 dark:bg-gray-600'}`} />
-                          <span className={`text-sm font-semibold uppercase flex-1 ${i === ttsCurrentIdx ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>{token.label}</span>
-                          {token.entry && (
-                            <span className="text-[10px] text-gray-400 dark:text-gray-500 capitalize shrink-0">{token.entry.media_type}</span>
-                          )}
-                        </motion.button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Clear button */}
-                {(ttsTokens.length > 0 || ttsInput) && (
-                  <button
-                    onClick={() => { setTtsTokens([]); setTtsInput(''); setTtsCurrentIdx(0); setTtsError(''); }}
-                    className="flex items-center justify-center gap-2 p-3 text-red-500 bg-red-50 border border-red-100 dark:bg-[#341b25] dark:border-[#52212d] dark:text-[#f87171] rounded-xl hover:brightness-110 transition-all text-sm font-semibold"
-                  >
-                    <Trash2 size={16} /> Clear All
-                  </button>
-                )}
-              </div>
-            ) : (<>
-            {/* Language selectors */}
-            <div className="flex flex-col gap-4 p-4 sm:p-5 bg-white border border-gray-200 shadow-sm rounded-2xl dark:bg-[#1e293b] dark:border-gray-700/30">
-              {/* From row — hidden in number mode (numbers are language-agnostic) */}
-              {!(mode === 'camera' && signMode === 'number') && (
-                <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                  <span className="text-sm font-bold text-gray-700 dark:text-gray-300 shrink-0">From:</span>
-                  <div className="w-full sm:w-64">
-                    {mode === 'camera' ? (
-                      <div className="flex items-center w-full px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-xl dark:bg-[#334155] dark:text-gray-300 dark:border-gray-600/50">
-                        American Sign Language (ASL)
-                      </div>
-                    ) : (
-                      <LanguageSelector selectedLang={sourceLang} onChange={setSourceLang} includeAuto={true} />
-                    )}
-                  </div>
-                </div>
-              )}
-              <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                <span className="text-sm font-bold text-gray-700 dark:text-gray-300 shrink-0">
-                  {mode === 'camera' && signMode === 'number' ? 'Speak Language:' : 'To:'}
-                </span>
-                <div className="w-full sm:w-64">
-                  <LanguageSelector selectedLang={targetLang} onChange={setTargetLang} includeAuto={false} />
-                </div>
-              </div>
-            </div>
-
-            {/* ── Translation output panel ── */}
-            <div className="relative flex flex-col flex-grow p-5 sm:p-6 bg-white border border-gray-200 shadow-sm dark:bg-[#1e293b]/60 dark:border-gray-700/30 rounded-[2rem] min-h-[200px]">
-
-              {/* Save status — top-left */}
-              <div className="absolute top-4 left-5 flex items-center gap-2 min-h-[28px]">
-                <AnimatePresence>
-                  {saveStatus === 'saving' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded-full dark:bg-[#334155] dark:text-gray-400">
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" /> Saving...
-                    </motion.div>
-                  )}
-                  {saveStatus === 'saved' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-green-600 bg-green-100 rounded-full dark:bg-green-900/30 dark:text-green-400">
-                      <CheckCircle size={11} /> Saved
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Favorite button — top-right, alone, no overlap */}
-              <div className="absolute top-3 right-4">
-                <motion.button
-                  onClick={toggleFavorite}
-                  whileTap={{ scale: 0.85 }}
-                  title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
-                  className={`p-2 rounded-full transition-all duration-200 ${isFavorited ? 'text-rose-500 bg-rose-50 dark:bg-rose-900/30' : 'text-gray-400 hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20'}`}
-                >
-                  <Heart size={18} fill={isFavorited ? 'currentColor' : 'none'} />
-                </motion.button>
-              </div>
-
-              {/* Input sentence section */}
-              {mode === 'camera' && signMode !== 'number' && (
-                <div className="pb-4 mt-8 mb-4 border-b border-gray-100 dark:border-gray-600/30">
-                  {/* Label row: title left, undo right — clearly separated */}
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-xs font-bold tracking-widest text-gray-500 uppercase dark:text-gray-400/80">
-                      {signMode === 'alphabet' ? 'Input Letter' : 'Input Sentence'}
-                    </h2>
-                    <AnimatePresence>
-                      {lastWord && signMode === 'word' && (
-                        <motion.button
-                          initial={{ opacity: 0, scale: 0.85 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.85 }}
-                          onClick={undoLastWord}
-                          className="flex items-center gap-1 px-2.5 py-1 text-xs text-gray-500 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700/60 dark:hover:bg-gray-700 dark:text-gray-400 rounded-full transition-colors"
-                        >
-                          <RotateCcw size={11} />
-                          Undo
-                        </motion.button>
-                      )}
-                    </AnimatePresence>
-                  </div>
-
-                  {signMode === 'word' && isCollecting ? (
-                    <div className="flex items-center gap-2 min-h-[48px]">
-                      <Loader2 size={16} className="text-primary animate-spin shrink-0" />
-                      <p className="text-sm italic text-gray-400 dark:text-gray-500">Signing in progress...</p>
-                    </div>
-                  ) : (
-                    <p className="min-h-[48px] text-lg sm:text-xl font-mono text-gray-700 dark:text-gray-300 break-words leading-relaxed">
-                      {inputText || <span className="font-sans text-base font-normal text-gray-300 dark:text-gray-600">Waiting for signs...</span>}
-                      {isRecording && <span className="inline-block w-2 h-5 ml-1 align-middle rounded-sm bg-primary animate-pulse" />}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Translation result section */}
-              <div className={mode === 'camera' && signMode !== 'number' ? '' : 'mt-8'}>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-xs font-bold tracking-widest text-gray-500 uppercase dark:text-gray-400/80">
-                    Translation Result
-                  </h2>
-                  {((mode === 'camera' && signMode === 'number') ? inputText : (translatedText && translatedText !== '...')) && (
-                    <button
-                      onClick={() => speakText(mode === 'camera' && signMode === 'number' ? inputText : translatedText)}
-                      disabled={isSpeaking}
-                      className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isSpeaking
-                        ? <><Loader2 size={12} className="animate-spin" /> Speaking…</>
-                        : <><Volume2 size={12} /> Speak again</>
-                      }
-                    </button>
-                  )}
-                </div>
-                <p className="text-3xl font-extrabold leading-tight tracking-tight text-gray-900 break-words sm:text-4xl md:text-5xl dark:text-white">
-                  {(mode === 'camera' && signMode === 'number')
-                    ? (inputText || <span className="text-2xl font-normal text-gray-300 dark:text-gray-600">Waiting for signs...</span>)
-                    : translatedText}
-                </p>
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
-              {[
-                { label: isSpeaking ? 'Speaking…' : 'Speak', icon: isSpeaking ? Loader2 : Volume2, onClick: () => speakText(mode === 'camera' && signMode === 'number' ? inputText : translatedText), style: '', loading: isSpeaking },
-                { label: 'Backspace', icon: Delete, onClick: () => { setInputText(p => p.slice(0, -1)); setIsFavorited(false); }, style: '' },
-                { label: 'Space', icon: Keyboard, onClick: () => { setInputText(p => p + ' '); setIsFavorited(false); }, style: '' },
-                { label: 'Clear', icon: Trash2, onClick: clearAll, style: 'text-red-500 bg-red-50 border-red-100 dark:bg-[#341b25] dark:border-[#52212d] dark:text-[#f87171]' },
-              ].map(({ label, icon: Icon, onClick, style, loading }) => (
-                <button
-                  key={label}
-                  onClick={onClick}
-                  disabled={loading}
-                  className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 p-3 rounded-xl border transition-colors hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed ${style || 'text-gray-700 bg-white border-gray-200 dark:text-white dark:bg-[#334155] dark:border-transparent'}`}
-                >
-                  <Icon size={16} className={`sm:w-[18px] sm:h-[18px] shrink-0 ${loading ? 'animate-spin' : ''}`} />
-                  <span className="text-[10px] sm:text-xs font-medium leading-tight text-center">{label}</span>
-                </button>
-              ))}
-            </div>
-            </>)}
+              <TextToSignSidePanel
+                ttsTokens={ttsTokens}
+                ttsCurrentIdx={ttsCurrentIdx}
+                setTtsCurrentIdx={setTtsCurrentIdx}
+                ttsInput={ttsInput}
+                setTtsInput={setTtsInput}
+                ttsError={ttsError}
+                setTtsError={setTtsError}
+                setTtsTokens={setTtsTokens}
+                setTtsAutoPlaying={setTtsAutoPlaying}
+              />
+            ) : (
+              <TranslationPanel
+                mode={mode}
+                signMode={signMode}
+                sourceLang={sourceLang}
+                setSourceLang={setSourceLang}
+                targetLang={targetLang}
+                setTargetLang={setTargetLang}
+                saveStatus={saveStatus}
+                isFavorited={isFavorited}
+                toggleFavorite={toggleFavorite}
+                inputText={inputText}
+                setInputText={setInputText}
+                setIsFavorited={setIsFavorited}
+                translatedText={translatedText}
+                isRecording={isRecording}
+                isCollecting={isCollecting}
+                lastWord={lastWord}
+                undoLastWord={undoLastWord}
+                isSpeaking={isSpeaking}
+                speakText={speakText}
+                clearAll={clearAll}
+              />
+            )}
           </div>
         </div>
 
-        {/* History & Favorites bar */}
-        <div className="flex justify-center gap-12 py-6 mt-2 sm:gap-16 sm:py-8">
-          {[
-            { id: 'history', icon: Clock, label: 'History', activeColor: 'text-primary border-primary bg-primary/10', defaultColor: 'border-gray-200 dark:border-gray-700' },
-            { id: 'favorites', icon: Star, label: 'Saved', activeColor: 'text-rose-500 border-rose-400 bg-rose-50 dark:bg-rose-900/20', defaultColor: 'border-gray-200 dark:border-gray-700' },
-          ].map(({ id, icon: Icon, label, activeColor, defaultColor }) => (
-            <button key={id} onClick={() => openPanel(id)} className={`flex flex-col items-center gap-1.5 group transition-all duration-200 ${activePanel === id ? activeColor.split(' ')[0] : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-              <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center border-2 transition-all duration-200 ${activePanel === id ? activeColor : defaultColor}`}>
-                <Icon size={20} fill={id === 'favorites' && activePanel === id ? 'currentColor' : 'none'} />
-              </div>
-              <span className="text-xs font-medium">{label}</span>
-            </button>
-          ))}
-        </div>
+        <HistoryFavoritesBar activePanel={activePanel} openPanel={openPanel} />
       </main>
 
-      {/* ── Tips Modal ── */}
-      <AnimatePresence>
-        {showTips && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center sm:p-4 bg-black/40 backdrop-blur-sm">
-            <motion.div
-              initial={{ y: '100%', opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: '100%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-              className="relative w-full sm:max-w-sm p-6 bg-white dark:bg-[#0f172a] sm:border sm:border-gray-200 dark:border-gray-700/50 shadow-2xl rounded-t-3xl sm:rounded-3xl"
-            >
-              <button onClick={() => setShowTips(false)} className="absolute p-2 text-gray-400 transition-colors bg-gray-100 rounded-full top-4 right-4 hover:text-gray-700 dark:hover:text-white dark:bg-white/10">
-                <X size={18} />
-              </button>
-              <div className="flex items-center gap-3 mb-5">
-                <div className="p-2 bg-yellow-100 rounded-full dark:bg-yellow-500/20">
-                  <Lightbulb className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Pro Tips</h3>
-              </div>
-              <ul className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
-                {[
-                  'Ensure better lighting for accurate hand tracking.',
-                  'Use a plain, non-noisy background.',
-                  'Keep your hand close to the camera and fully visible.',
-                  'Word Mode — sign one word, lower your hand, result appears automatically.',
-                  'Green pill = word recognized. Dots show model confidence.',
-                  'Tap Undo if the wrong word was captured.',
-                  'Translation is spoken aloud automatically.',
-                ].map((tip, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <CheckCircle className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
-                    <span>{tip}</span>
-                  </li>
-                ))}
-              </ul>
-              <button onClick={() => setShowTips(false)} className="w-full mt-6 py-2.5 bg-gray-900/10 dark:bg-white/10 hover:bg-gray-900/20 dark:hover:bg-white/20 text-gray-900 dark:text-white font-semibold rounded-xl transition-colors">Got it!</button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <TipsModal showTips={showTips} setShowTips={setShowTips} />
 
-      {/* ── Side Panel (History / Favorites) ── */}
-      <AnimatePresence>
-        {activePanel && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setActivePanel(null)} className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm" />
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-              className="fixed top-0 right-0 z-[210] h-full w-full max-w-sm bg-white dark:bg-[#0f172a] shadow-2xl flex flex-col"
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-                <div className="flex items-center gap-3">
-                  {activePanel === 'history'
-                    ? <Clock size={20} className="text-primary" />
-                    : <Star size={20} className="text-rose-500" fill="currentColor" />}
-                  <h2 className="text-base font-bold text-gray-900 dark:text-white">
-                    {activePanel === 'history' ? 'Translation History' : 'Saved Favorites'}
-                  </h2>
-                </div>
-                <button onClick={() => setActivePanel(null)} className="p-2 text-gray-400 transition-colors rounded-full hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800">
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="flex-1 p-4 space-y-3 overflow-y-auto">
-                {activePanel === 'history' && (
-                  panelLoading ? (
-                    <div className="flex items-center justify-center h-40">
-                      <div className="w-8 h-8 border-4 rounded-full border-primary border-t-transparent animate-spin" />
-                    </div>
-                  ) : historyItems.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-40 text-gray-400">
-                      <Clock size={32} className="mb-3 opacity-30" />
-                      <p className="text-sm">No history yet</p>
-                    </div>
-                  ) : historyItems.map((item, i) => (
-                    <motion.button
-                      key={item._id || i}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                      onClick={() => applyHistoryItem(item)}
-                      className="w-full text-left p-4 rounded-2xl bg-gray-50 dark:bg-[#1e293b] border border-gray-100 dark:border-gray-700/40 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200"
-                    >
-                      <p className="text-sm font-medium text-gray-800 truncate dark:text-gray-200">{item.original_text}</p>
-                      <p className="mt-1 text-xs truncate text-primary dark:text-indigo-400">{item.translated_text}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 capitalize">{item.mode}</span>
-                        <span className="text-[10px] text-gray-400">{new Date(item.created_at || Date.now()).toLocaleDateString()}</span>
-                      </div>
-                    </motion.button>
-                  ))
-                )}
-
-                {activePanel === 'favorites' && (
-                  favorites.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-40 text-gray-400">
-                      <Heart size={32} className="mb-3 opacity-30" />
-                      <p className="text-sm">No favorites yet</p>
-                      <p className="mt-1 text-xs opacity-60">Tap ♥ on a translation to save it</p>
-                    </div>
-                  ) : favorites.map((item, i) => (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                      className="relative p-4 rounded-2xl bg-rose-50/60 dark:bg-[#1e293b] border border-rose-100 dark:border-rose-900/30"
-                    >
-                      <button onClick={() => applyFavorite(item)} className="w-full text-left">
-                        <p className="pr-8 text-sm font-medium text-gray-800 truncate dark:text-gray-200">{item.original}</p>
-                        <p className="mt-1 text-xs truncate text-rose-500 dark:text-rose-400">{item.translated}</p>
-                        <p className="text-[10px] text-gray-400 mt-2">{new Date(item.date).toLocaleDateString()}</p>
-                      </button>
-                      <button
-                        onClick={() => removeFavorite(item.id)}
-                        className="absolute top-3 right-3 p-1.5 text-gray-300 hover:text-red-400 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                      >
-                        <X size={13} />
-                      </button>
-                    </motion.div>
-                  ))
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <SidePanel
+        activePanel={activePanel}
+        setActivePanel={setActivePanel}
+        panelLoading={panelLoading}
+        historyItems={historyItems}
+        favorites={favorites}
+        applyHistoryItem={applyHistoryItem}
+        applyFavorite={applyFavorite}
+        removeFavorite={removeFavorite}
+      />
 
       <Footer />
     </div>
