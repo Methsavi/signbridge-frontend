@@ -33,6 +33,17 @@ const Translator = () => {
   const [saveStatus, setSaveStatus] = useState(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const isSpeakingRef = useRef(false);
+  const [autoSpeak, setAutoSpeak] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sb_autoSpeak') || 'false'); } catch { return false; }
+  });
+  const autoSpeakRef = useRef(false);
+  autoSpeakRef.current = autoSpeak;
+
+  const toggleAutoSpeak = () => {
+    const next = !autoSpeak;
+    setAutoSpeak(next);
+    localStorage.setItem('sb_autoSpeak', JSON.stringify(next));
+  };
 
   // ── Hand / sign feedback ──────────────────────────────────────────
   const [handDetected, setHandDetected] = useState(true);
@@ -226,7 +237,7 @@ const Translator = () => {
       const result = await featureService.translate(text, targetLang, sourceLang);
       setTranslatedText(result.translated);
       setIsFavorited(false);
-      speakText(result.translated);
+      if (autoSpeakRef.current) speakText(result.translated);
       pendingSaveRef.current = {
         original: text,
         translated: result.translated,
@@ -762,6 +773,8 @@ const Translator = () => {
                 isSpeaking={isSpeaking}
                 speakText={speakText}
                 clearAll={clearAll}
+                autoSpeak={autoSpeak}
+                toggleAutoSpeak={toggleAutoSpeak}
               />
             )}
           </div>

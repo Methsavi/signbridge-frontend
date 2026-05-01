@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Volume2, Trash2, Keyboard, CheckCircle, Delete,
-  Heart, Loader2, RotateCcw,
+  Heart, Loader2, RotateCcw, VolumeX,
 } from 'lucide-react';
 import LanguageSelector from '../LanguageSelector';
 
@@ -27,6 +27,8 @@ const TranslationPanel = ({
   isSpeaking,
   speakText,
   clearAll,
+  autoSpeak,
+  toggleAutoSpeak,
 }) => {
   const speakTarget = mode === 'camera' && signMode === 'number' ? inputText : translatedText;
 
@@ -56,6 +58,31 @@ const TranslationPanel = ({
           <div className="w-full sm:w-64">
             <LanguageSelector selectedLang={targetLang} onChange={setTargetLang} includeAuto={false} />
           </div>
+        </div>
+
+        {/* Auto-speak toggle */}
+        <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-700/40">
+          <div className="flex items-center gap-2">
+            {autoSpeak
+              ? <Volume2 size={14} className="text-primary" />
+              : <VolumeX size={14} className="text-gray-400" />
+            }
+            <span className="text-sm font-bold text-gray-700 dark:text-gray-300">Auto-speak</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {autoSpeak ? 'On' : 'Off'}
+            </span>
+          </div>
+          <button
+            onClick={toggleAutoSpeak}
+            aria-label={autoSpeak ? 'Disable auto-speak' : 'Enable auto-speak'}
+            className={`relative w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+              autoSpeak ? 'bg-primary' : 'bg-gray-200 dark:bg-gray-600'
+            }`}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${
+              autoSpeak ? 'translate-x-5' : 'translate-x-0.5'
+            }`} />
+          </button>
         </div>
       </div>
 
