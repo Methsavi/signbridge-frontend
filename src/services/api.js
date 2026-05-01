@@ -370,6 +370,11 @@ export const adminService = {
     return response.data;
   },
 
+  getAnalyticsStats: async () => {
+    const response = await api.get('/users/admin/analytics');
+    return response.data;
+  },
+
   getUsers: async (params = {}) => {
     const response = await api.get('/users/admin/users', { params });
     return response.data;
