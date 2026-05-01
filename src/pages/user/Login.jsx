@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, LogIn, AlertCircle, ArrowLeft } from 'lucide-react';
-import { authService, getReadableAuthError } from '../services/api';
+import { authService, getReadableAuthError } from '../../services/api';
 
 const GoogleLogo = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
