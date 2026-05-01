@@ -26,6 +26,7 @@ import AdminSettings from './pages/admin/Settings';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminFeedbacks from './pages/admin/AdminFeedbacks';
 import ManageDictionary from './pages/admin/ManageDictionary';
+import Analytics from './pages/admin/Analytics';
 
 function App() {
   return (
@@ -55,6 +56,7 @@ function App() {
               <Route path="settings" element={<AdminSettings />} />
               <Route path="feedbacks" element={<AdminFeedbacks />} />
               <Route path="dictionary" element={<ManageDictionary />} />
+              <Route path="analytics" element={<Analytics />} />
             </Route>
 
             {/* Catch-all 404 Route */}

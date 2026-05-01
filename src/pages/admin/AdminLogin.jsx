@@ -70,7 +70,7 @@ const AdminLogin = () => {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="w-full max-w-lg p-8 sm:p-10 transition-colors border shadow-2xl bg-white/80 dark:bg-slate-900/80 border-slate-200/50 dark:border-slate-800/50 backdrop-blur-xl rounded-3xl"
+          className="w-full max-w-lg p-8 sm:p-10 transition-colors border shadow-2xl bg-glass border-slate-200/50 dark:border-slate-800/50 backdrop-blur-xl rounded-3xl"
         >
           <div className="text-center mb-8">
             <motion.div
@@ -110,7 +110,7 @@ const AdminLogin = () => {
                     name="email"
                     type="email"
                     required
-                    className="block w-full py-3.5 pl-11 pr-4 text-slate-900 placeholder-slate-400 transition-all border-2 border-slate-200/80 rounded-xl bg-white/50 focus:bg-white dark:text-slate-100 dark:placeholder-slate-500 dark:border-slate-800 dark:bg-slate-950/50 dark:focus:bg-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 sm:text-sm"
+                    className="block w-full py-3.5 pl-11 pr-4 text-slate-900 placeholder-slate-400 transition-all border border-white/20 rounded-xl bg-white/50 focus:bg-white dark:text-slate-100 dark:placeholder-slate-500 dark:border-slate-800 dark:bg-slate-950/50 dark:focus:bg-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 sm:text-sm"
                     placeholder="admin@signbridge.com"
                     onChange={handleChange}
                   />
@@ -127,7 +127,7 @@ const AdminLogin = () => {
                     name="password"
                     type="password"
                     required
-                    className="block w-full py-3.5 pl-11 pr-4 text-slate-900 placeholder-slate-400 transition-all border-2 border-slate-200/80 rounded-xl bg-white/50 focus:bg-white dark:text-slate-100 dark:placeholder-slate-500 dark:border-slate-800 dark:bg-slate-950/50 dark:focus:bg-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 sm:text-sm"
+                    className="block w-full py-3.5 pl-11 pr-4 text-slate-900 placeholder-slate-400 transition-all border border-white/20 rounded-xl bg-white/50 focus:bg-white dark:text-slate-100 dark:placeholder-slate-500 dark:border-slate-800 dark:bg-slate-950/50 dark:focus:bg-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 sm:text-sm"
                     placeholder="••••••••"
                     onChange={handleChange}
                   />

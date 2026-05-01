@@ -105,11 +105,7 @@ const AdminManagement = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Admin Management</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Manage administrators, roles and permissions.</p>
-        </div>
+      <div className="flex justify-end">
         <button
           onClick={openCreateModal}
           className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition-colors shadow-lg shadow-indigo-500/30 font-medium"
@@ -131,7 +127,7 @@ const AdminManagement = () => {
           const adminInitial = adminDisplayName.charAt(0).toUpperCase();
 
           return (
-          <div key={admin.id} className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl p-6 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm relative group overflow-hidden">
+          <div key={admin.id} className="bg-glass p-6 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm relative group overflow-hidden">
             {/* Background design element */}
             <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full opacity-10 blur-2xl ${
               admin.role === 'Superadmin' ? 'bg-purple-500' : 'bg-blue-500'
@@ -181,7 +177,7 @@ const AdminManagement = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl">
+          <div className="w-full max-w-lg rounded-2xl bg-glass border border-slate-200 dark:border-slate-700 shadow-xl">
             <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
               <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {editingAdmin ? 'Edit Admin' : 'Invite Admin'}
@@ -198,7 +194,7 @@ const AdminManagement = () => {
                 placeholder="Name"
                 value={form.username}
                 onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 glass-input"
               />
               <input
                 required
@@ -206,7 +202,7 @@ const AdminManagement = () => {
                 placeholder="Email"
                 value={form.email}
                 onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 glass-input"
               />
               <input
                 type="password"
@@ -214,21 +210,21 @@ const AdminManagement = () => {
                 placeholder={editingAdmin ? 'Leave blank to keep password' : 'Temporary password'}
                 value={form.password}
                 onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 glass-input"
               />
 
               <div className="grid grid-cols-2 gap-3">
                 <select
                   value={form.role}
                   onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}
-                  className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                  className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 glass-input"
                 >
                   <option>Admin</option>
                 </select>
                 <select
                   value={form.status}
                   onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))}
-                  className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                  className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 glass-input"
                 >
                   <option>Active</option>
                   <option>Offline</option>

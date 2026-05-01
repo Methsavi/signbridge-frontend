@@ -128,7 +128,7 @@ const EntryModal = ({ entry, onClose, onSaved }) => {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.92, y: 20 }}
         transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-        className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-700/60 overflow-hidden"
+        className="relative w-full max-w-lg bg-glass rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-700/60 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -238,7 +238,7 @@ const ConfirmDelete = ({ entry, onClose, onConfirm, loading }) => (
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-700/60 p-6 space-y-4"
+      className="w-full max-w-sm bg-glass rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-700/60 p-6 space-y-4"
       onClick={e => e.stopPropagation()}
     >
       <div className="flex items-center gap-3">
@@ -329,13 +329,7 @@ const ManageDictionary = () => {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Manage ASL Dictionary</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Add, edit and remove signs — images or videos with labels &amp; categories.
-          </p>
-        </div>
+      <div className="flex justify-end">
         <button
           onClick={() => setModalEntry({})}
           className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-500 hover:bg-blue-600 rounded-2xl shadow-lg shadow-blue-500/25 transition-all active:scale-95"
@@ -349,7 +343,7 @@ const ManageDictionary = () => {
         {CATEGORIES.slice(1).map(c => {
           const count = entries.filter(e => e.category === c.value).length;
           return (
-            <div key={c.value} className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 shadow-sm">
+            <div key={c.value} className="p-4 rounded-2xl bg-glass border border-slate-200/60 dark:border-slate-800 shadow-sm">
               <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{count}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">{c.label}s</p>
             </div>
@@ -366,7 +360,7 @@ const ManageDictionary = () => {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search by label…"
-            className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-glass text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
           />
           {search && (
             <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -379,7 +373,7 @@ const ManageDictionary = () => {
         <div className="relative">
           <button
             onClick={() => setShowFilterMenu(p => !p)}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border border-slate-200 dark:border-slate-700 rounded-xl bg-glass text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
           >
             <Filter size={15} />
             {CATEGORIES.find(c => c.value === categoryFilter)?.label || 'All Categories'}
@@ -391,7 +385,7 @@ const ManageDictionary = () => {
                 initial={{ opacity: 0, y: 6, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                className="absolute right-0 mt-1 z-20 w-44 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden"
+                className="absolute right-0 mt-1 z-20 w-44 py-1 bg-glass border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden"
               >
                 {CATEGORIES.map(c => (
                   <button
@@ -415,7 +409,7 @@ const ManageDictionary = () => {
         <button
           onClick={fetchEntries}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border border-slate-200 dark:border-slate-700 rounded-xl bg-glass text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
           Refresh
@@ -434,11 +428,11 @@ const ManageDictionary = () => {
           <p className="text-sm mt-1">Try adjusting the search or add a new sign.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm bg-glass">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                <tr className="border-b border-slate-100 dark:border-slate-800 bg-white/20 dark:bg-black/40">
                   <th className="text-left px-4 py-3.5 font-semibold text-slate-500 dark:text-slate-400">Media</th>
                   <th className="text-left px-4 py-3.5 font-semibold text-slate-500 dark:text-slate-400">Label</th>
                   <th className="text-left px-4 py-3.5 font-semibold text-slate-500 dark:text-slate-400">Category</th>
@@ -455,7 +449,7 @@ const ManageDictionary = () => {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
                       transition={{ delay: i * 0.02 }}
-                      className="border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors"
+                      className="border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-white/20 dark:hover:bg-white/10 transition-colors"
                     >
                       <td className="px-4 py-3">
                         <MediaPreview url={entry.media_url} mediaType={entry.media_type} label={entry.label} size="sm" />

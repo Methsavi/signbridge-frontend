@@ -4,11 +4,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Camera, StopCircle, Volume2, Trash2, Keyboard, Video,
   CheckCircle, Delete, Type, Hash, MessageSquare, Heart,
-  Clock, X, Star, Lightbulb, Loader2, RotateCcw
+  Clock, X, Star, Lightbulb, Loader2, RotateCcw,
+  AlertTriangle, Eye, Mic, MicOff, ArrowLeft, ArrowRight, BookOpen, Play, Pause
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { featureService } from '../services/api';
+import { featureService, dictionaryService } from '../services/api';
 import LanguageSelector from '../components/LanguageSelector';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -48,6 +49,26 @@ const Translator = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const isSpeakingRef = useRef(false);
 
+  // ── Hand / sign feedback state ────────────────────────────────────
+  const [handDetected, setHandDetected] = useState(true);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const [currentSign, setCurrentSign] = useState('');
+  const [signConfidence, setSignConfidence] = useState(0);
+  // Time-based warnings — only fire after sustained absence, not on brief transitions
+  const [showNoHandWarning, setShowNoHandWarning] = useState(false);
+  const [showLowConfWarning, setShowLowConfWarning] = useState(false);
+  const noHandSinceRef = useRef(null);     // ms timestamp when hand first left frame
+  const lowConfSinceRef = useRef(null);    // ms timestamp when low-confidence started
+  const noHandWarnShownRef = useRef(false);  // true once warning fired for this absence session
+  const lowConfWarnShownRef = useRef(false); // true once warning fired for this unclear session
+  const noHandDismissRef = useRef(null);   // setTimeout handle for no-hand auto-dismiss
+  const lowConfDismissRef = useRef(null);  // setTimeout handle for low-conf auto-dismiss
+
+  // ── Voice typing (text mode) ──────────────────────────────────────
+  const [isListening, setIsListening] = useState(false);
+  const [voiceSupported] = useState(() => !!(window.SpeechRecognition || window.webkitSpeechRecognition));
+  const recognitionRef = useRef(null);
+
   const [activePanel, setActivePanel] = useState(null);
   const [historyItems, setHistoryItems] = useState([]);
   const [favorites, setFavorites] = useState(() => {
@@ -76,6 +97,19 @@ const Translator = () => {
   const lastCommittedRef = useRef(null);
   const lastCommittedTimeRef = useRef(0);
   const WORD_DEDUP_MS = 2000; // ignore same word within 2 seconds
+
+  // ── Text-to-Sign mode state ───────────────────────────────────────
+  const [ttsInput, setTtsInput] = useState('');
+  const [ttsTokens, setTtsTokens] = useState([]);
+  const [ttsCurrentIdx, setTtsCurrentIdx] = useState(0);
+  const [ttsLoading, setTtsLoading] = useState(false);
+  const [ttsIsListening, setTtsIsListening] = useState(false);
+  const [ttsError, setTtsError] = useState('');
+  const [ttsAutoPlaying, setTtsAutoPlaying] = useState(false);
+  const ttsRecognitionRef = useRef(null);
+  const dictEntriesCacheRef = useRef(null);
+  const ttsAutoPlayTimerRef = useRef(null);
+  const ttsVideoRef = useRef(null);
 
   // ─────────────────────────────────────────────────────────────────
   // SPEAK  — Google Cloud TTS with browser speechSynthesis fallback
@@ -283,6 +317,14 @@ const Translator = () => {
     if (socketRef.current) socketRef.current.close();
     if (intervalRef.current) clearInterval(intervalRef.current);
 
+    // Reset all feedback state and timers
+    setHandDetected(true); setHoldProgress(0); setCurrentSign(''); setSignConfidence(0);
+    setShowNoHandWarning(false); setShowLowConfWarning(false);
+    noHandSinceRef.current = null; lowConfSinceRef.current = null;
+    noHandWarnShownRef.current = false; lowConfWarnShownRef.current = false;
+    if (noHandDismissRef.current) { clearTimeout(noHandDismissRef.current); noHandDismissRef.current = null; }
+    if (lowConfDismissRef.current) { clearTimeout(lowConfDismissRef.current); lowConfDismissRef.current = null; }
+
     const currentMode = signModeRef.current;
     socketRef.current = new WebSocket(`${import.meta.env.VITE_WS_URL}/ws/predict/${currentMode}`);
 
@@ -353,11 +395,60 @@ const Translator = () => {
         }
       }
 
+      const now = Date.now();
+
       if (data.landmarks) {
         drawHand(data.landmarks);
+        setHandDetected(true);
+        // Hand returned — reset no-hand session entirely
+        noHandSinceRef.current = null;
+        noHandWarnShownRef.current = false;
+        if (noHandDismissRef.current) { clearTimeout(noHandDismissRef.current); noHandDismissRef.current = null; }
+        setShowNoHandWarning(false);
       } else {
         const canvas = canvasRef.current;
         if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        setHandDetected(false);
+        // Warn once per absence session after 6 s; auto-dismiss after 2 s
+        if (noHandSinceRef.current === null) noHandSinceRef.current = now;
+        if (now - noHandSinceRef.current >= 6000 && !noHandWarnShownRef.current) {
+          noHandWarnShownRef.current = true;
+          setShowNoHandWarning(true);
+          if (noHandDismissRef.current) clearTimeout(noHandDismissRef.current);
+          noHandDismissRef.current = setTimeout(() => setShowNoHandWarning(false), 2000);
+        }
+        // No hand — reset low-conf session entirely
+        lowConfSinceRef.current = null;
+        lowConfWarnShownRef.current = false;
+        if (lowConfDismissRef.current) { clearTimeout(lowConfDismissRef.current); lowConfDismissRef.current = null; }
+        setShowLowConfWarning(false);
+      }
+
+      // Alphabet / Number specific hold + confidence feedback
+      if (currentMode !== 'word') {
+        const recognized = data.sign && data.sign !== '...' && data.sign !== 'Nothing';
+        setCurrentSign(recognized ? data.sign : '');
+        setSignConfidence(data.confidence || 0);
+        setHoldProgress(data.hold_progress || 0);
+
+        if (data.landmarks) {
+          if (!recognized) {
+            // Warn once per unclear session after 3 s; auto-dismiss after 2 s
+            if (lowConfSinceRef.current === null) lowConfSinceRef.current = now;
+            if (now - lowConfSinceRef.current >= 3000 && !lowConfWarnShownRef.current) {
+              lowConfWarnShownRef.current = true;
+              setShowLowConfWarning(true);
+              if (lowConfDismissRef.current) clearTimeout(lowConfDismissRef.current);
+              lowConfDismissRef.current = setTimeout(() => setShowLowConfWarning(false), 2000);
+            }
+          } else {
+            // Sign recognized — reset low-conf session entirely
+            lowConfSinceRef.current = null;
+            lowConfWarnShownRef.current = false;
+            if (lowConfDismissRef.current) { clearTimeout(lowConfDismissRef.current); lowConfDismissRef.current = null; }
+            setShowLowConfWarning(false);
+          }
+        }
       }
     };
   };
@@ -377,6 +468,206 @@ const Translator = () => {
     if (isRecording && webcamRef.current?.video?.readyState === 4) initSocket();
   };
 
+  // ─────────────────────────────────────────────────────────────────
+  // VOICE TYPING  — Web Speech API (free, browser-native)
+  // ─────────────────────────────────────────────────────────────────
+  const stopVoiceTyping = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.onend = null; // prevent auto-restart
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+  }, []);
+
+  const startVoiceTyping = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+
+    // Map Google Translate code → BCP-47 locale for SpeechRecognition
+    const localeMap = {
+      en:'en-US', si:'si-LK', ta:'ta-IN', hi:'hi-IN', fr:'fr-FR', de:'de-DE',
+      es:'es-ES', it:'it-IT', pt:'pt-PT', ru:'ru-RU', ja:'ja-JP', ko:'ko-KR',
+      zh:'zh-CN', 'zh-CN':'zh-CN', 'zh-TW':'zh-TW', ar:'ar-SA', nl:'nl-NL',
+      pl:'pl-PL', tr:'tr-TR', vi:'vi-VN', th:'th-TH', id:'id-ID', ms:'ms-MY',
+      bn:'bn-IN', uk:'uk-UA', he:'he-IL', fa:'fa-IR', cs:'cs-CZ', hu:'hu-HU',
+      ro:'ro-RO', sv:'sv-SE', da:'da-DK', fi:'fi-FI', no:'nb-NO', el:'el-GR',
+      bg:'bg-BG', hr:'hr-HR', sk:'sk-SK', lt:'lt-LT', lv:'lv-LV', et:'et-EE',
+      sr:'sr-RS', ca:'ca-ES', mk:'mk-MK', gu:'gu-IN', mr:'mr-IN', ml:'ml-IN',
+      kn:'kn-IN', te:'te-IN', pa:'pa-IN', ur:'ur-PK',
+    };
+    const lang = sourceLang && sourceLang !== 'auto'
+      ? (localeMap[sourceLang] || sourceLang)
+      : 'en-US';
+
+    const recognition = new SR();
+    recognition.lang = lang;
+    recognition.continuous = true;
+    recognition.interimResults = false; // append only confirmed words
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setIsListening(true);
+
+    recognition.onresult = (event) => {
+      let transcript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) transcript += event.results[i][0].transcript;
+      }
+      if (transcript) {
+        setInputText(prev => {
+          const sep = prev && !prev.endsWith(' ') ? ' ' : '';
+          return prev + sep + transcript;
+        });
+        setIsFavorited(false);
+      }
+    };
+
+    recognition.onerror = () => { setIsListening(false); recognitionRef.current = null; };
+    recognition.onend = () => { setIsListening(false); recognitionRef.current = null; };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [sourceLang]);
+
+  const toggleVoiceTyping = useCallback(() => {
+    isListening ? stopVoiceTyping() : startVoiceTyping();
+  }, [isListening, startVoiceTyping, stopVoiceTyping]);
+
+  // Stop voice typing whenever user leaves text mode
+  useEffect(() => {
+    if (mode !== 'text') stopVoiceTyping();
+  }, [mode, stopVoiceTyping]);
+
+  // Stop TTS voice and auto-play whenever user leaves text-to-sign mode
+  useEffect(() => {
+    if (mode !== 'text-to-sign') {
+      if (ttsRecognitionRef.current) {
+        ttsRecognitionRef.current.onend = null;
+        ttsRecognitionRef.current.stop();
+        ttsRecognitionRef.current = null;
+      }
+      setTtsIsListening(false);
+      clearTimeout(ttsAutoPlayTimerRef.current);
+      setTtsAutoPlaying(false);
+    }
+  }, [mode]);
+
+  // ─────────────────────────────────────────────────────────────────
+  // TEXT-TO-SIGN — dictionary lookup
+  // ─────────────────────────────────────────────────────────────────
+  const loadDictEntries = useCallback(async () => {
+    if (dictEntriesCacheRef.current) return dictEntriesCacheRef.current;
+    const result = await dictionaryService.getEntries({});
+    const entries = result.items || [];
+    dictEntriesCacheRef.current = entries;
+    return entries;
+  }, []);
+
+  const resolveTextToSign = useCallback(async (text) => {
+    const entries = await loadDictEntries();
+    const trimmed = text.trim();
+
+    // 1. Full-text sentence match — return immediately if found
+    const sentenceEntry = entries.find(
+      e => e.label.toLowerCase() === trimmed.toLowerCase() && e.category === 'sentence'
+    );
+    if (sentenceEntry) return [{ label: trimmed, entry: sentenceEntry }];
+
+    // 2. Word-by-word, with letter fallback
+    const words = trimmed.toLowerCase().split(/\s+/).filter(Boolean);
+    const result = [];
+    for (const word of words) {
+      const wordEntry = entries.find(
+        e => e.label.toLowerCase() === word && (e.category === 'word' || e.category === 'sentence')
+      );
+      if (wordEntry) {
+        result.push({ label: word, entry: wordEntry });
+      } else {
+        for (const char of word) {
+          if (/\d/.test(char)) {
+            const numEntry = entries.find(e => e.label === char && e.category === 'number');
+            result.push({ label: char, entry: numEntry || null });
+          } else {
+            const letterEntry = entries.find(e => e.label.toLowerCase() === char && e.category === 'letter');
+            result.push({ label: char, entry: letterEntry || null });
+          }
+        }
+      }
+    }
+    return result;
+  }, [loadDictEntries]);
+
+  const handleTextToSignSubmit = useCallback(async () => {
+    if (!ttsInput.trim()) return;
+    setTtsLoading(true);
+    setTtsError('');
+    clearTimeout(ttsAutoPlayTimerRef.current);
+    setTtsAutoPlaying(false);
+    try {
+      const tokens = await resolveTextToSign(ttsInput);
+      setTtsTokens(tokens);
+      setTtsCurrentIdx(0);
+      if (tokens.length > 1) setTtsAutoPlaying(true);
+    } catch {
+      setTtsError('Failed to load sign data. Please try again.');
+    } finally {
+      setTtsLoading(false);
+    }
+  }, [ttsInput, resolveTextToSign]);
+
+  // Auto-advance: fires for image/not-found tokens; videos use onEnded
+  useEffect(() => {
+    if (!ttsAutoPlaying || ttsTokens.length === 0) return;
+    const current = ttsTokens[ttsCurrentIdx];
+    if (current?.entry?.media_type === 'video') return; // handled by onEnded
+    const delay = current?.entry ? 2000 : 1200;
+    ttsAutoPlayTimerRef.current = setTimeout(() => {
+      if (ttsCurrentIdx < ttsTokens.length - 1) {
+        setTtsCurrentIdx(i => i + 1);
+      } else {
+        setTtsAutoPlaying(false);
+      }
+    }, delay);
+    return () => clearTimeout(ttsAutoPlayTimerRef.current);
+  }, [ttsAutoPlaying, ttsCurrentIdx, ttsTokens]);
+
+  const stopTtsVoiceTyping = useCallback(() => {
+    if (ttsRecognitionRef.current) {
+      ttsRecognitionRef.current.onend = null;
+      ttsRecognitionRef.current.stop();
+      ttsRecognitionRef.current = null;
+    }
+    setTtsIsListening(false);
+  }, []);
+
+  const startTtsVoiceTyping = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const recognition = new SR();
+    recognition.lang = 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onstart = () => setTtsIsListening(true);
+    recognition.onresult = (event) => {
+      let transcript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) transcript += event.results[i][0].transcript;
+      }
+      if (transcript) setTtsInput(prev => {
+        const sep = prev && !prev.endsWith(' ') ? ' ' : '';
+        return prev + sep + transcript;
+      });
+    };
+    recognition.onerror = () => { setTtsIsListening(false); ttsRecognitionRef.current = null; };
+    recognition.onend = () => { setTtsIsListening(false); ttsRecognitionRef.current = null; };
+    ttsRecognitionRef.current = recognition;
+    recognition.start();
+  }, []);
+
+  const toggleTtsVoice = useCallback(() => {
+    ttsIsListening ? stopTtsVoiceTyping() : startTtsVoiceTyping();
+  }, [ttsIsListening, stopTtsVoiceTyping, startTtsVoiceTyping]);
+
   const stopTranslation = (shouldSave = false) => {
     setIsRecording(false);
     if (socketRef.current) socketRef.current.close();
@@ -384,6 +675,12 @@ const Translator = () => {
     const canvas = canvasRef.current;
     if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
     setWordFlash(null); setWordAlternatives([]); setIsCollecting(false); setCollectingFrames(0);
+    setShowNoHandWarning(false); setShowLowConfWarning(false);
+    setHandDetected(true); setHoldProgress(0); setCurrentSign(''); setSignConfidence(0);
+    noHandSinceRef.current = null; lowConfSinceRef.current = null;
+    noHandWarnShownRef.current = false; lowConfWarnShownRef.current = false;
+    if (noHandDismissRef.current) { clearTimeout(noHandDismissRef.current); noHandDismissRef.current = null; }
+    if (lowConfDismissRef.current) { clearTimeout(lowConfDismissRef.current); lowConfDismissRef.current = null; }
     if (shouldSave) saveCurrentSession();
   };
 
@@ -437,15 +734,21 @@ const Translator = () => {
               <div className="inline-flex flex-wrap justify-center p-1 sm:p-1.5 bg-gray-200/50 dark:bg-gray-800/50 backdrop-blur-md rounded-2xl sm:rounded-full shadow-inner border border-gray-200/50 dark:border-gray-700/50 w-full sm:w-fit">
                 <button
                   onClick={() => { if (mode !== 'camera') { saveCurrentSession(); pendingSaveRef.current = null; lastSavedRef.current = ''; setMode('camera'); setIsRecording(false); setInputText(''); setTranslatedText('...'); setIsFavorited(false); } }}
-                  className={`flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${mode === 'camera' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
+                  className={`flex-1 sm:flex-none flex justify-center items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${mode === 'camera' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
                 >
-                  <Video size={16} /> Sign Mode
+                  <Video size={14} /> <span>Sign to Text</span>
+                </button>
+                <button
+                  onClick={() => { if (mode !== 'text-to-sign') { saveCurrentSession(); pendingSaveRef.current = null; lastSavedRef.current = ''; stopTranslation(); setMode('text-to-sign'); setInputText(''); setTranslatedText('...'); setIsFavorited(false); } }}
+                  className={`flex-1 sm:flex-none flex justify-center items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${mode === 'text-to-sign' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
+                >
+                  <BookOpen size={14} /> <span>Text to Sign</span>
                 </button>
                 <button
                   onClick={() => { if (mode !== 'text') { saveCurrentSession(); pendingSaveRef.current = null; lastSavedRef.current = ''; setMode('text'); stopTranslation(); setInputText(''); setTranslatedText('...'); setIsFavorited(false); } }}
-                  className={`flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${mode === 'text' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
+                  className={`flex-1 sm:flex-none flex justify-center items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 ${mode === 'text' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
                 >
-                  <Keyboard size={16} /> Text Mode
+                  <Keyboard size={14} /> <span>Text Mode</span>
                 </button>
               </div>
 
@@ -475,7 +778,226 @@ const Translator = () => {
               </AnimatePresence>
             </div>
 
-            {/* ── CAMERA BOX ── */}
+            {/* ── CAMERA BOX / TEXT-TO-SIGN PANEL ── */}
+            {mode === 'text-to-sign' ? (
+              <div className="flex flex-col gap-3">
+                {/* Input area */}
+                <div className="relative bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700/30 rounded-2xl overflow-hidden shadow-sm">
+                  <textarea
+                    value={ttsInput}
+                    onChange={(e) => { setTtsInput(e.target.value); if (ttsTokens.length > 0) setTtsTokens([]); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTextToSignSubmit(); } }}
+                    placeholder={ttsIsListening ? 'Listening… speak now' : 'Type text to convert to signs…'}
+                    rows={3}
+                    className={`w-full p-4 sm:p-5 pb-14 text-base sm:text-lg text-gray-900 bg-transparent resize-none dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none ${ttsIsListening ? 'placeholder-red-400 dark:placeholder-red-500' : ''}`}
+                  />
+                  <AnimatePresence>
+                    {ttsIsListening && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 bg-red-500 rounded-full pointer-events-none shadow-lg"
+                      >
+                        <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                        <span className="text-xs font-semibold text-white">Listening…</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  <div className="absolute bottom-3 inset-x-3 flex items-center gap-2">
+                    {voiceSupported && (
+                      <button
+                        onClick={toggleTtsVoice}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold transition-all duration-200 ${ttsIsListening ? 'bg-red-500 hover:bg-red-600 text-white ring-4 ring-red-500/25' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                      >
+                        {ttsIsListening ? <><MicOff size={13} /> Stop</> : <><Mic size={13} /> Voice</>}
+                      </button>
+                    )}
+                    <button
+                      onClick={handleTextToSignSubmit}
+                      disabled={!ttsInput.trim() || ttsLoading}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-primary to-purple-500 text-white rounded-full text-xs font-bold shadow-md disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg transition-all duration-200"
+                    >
+                      {ttsLoading
+                        ? <><Loader2 size={13} className="animate-spin" /> Looking up…</>
+                        : <><BookOpen size={13} /> Show Signs</>
+                      }
+                    </button>
+                  </div>
+                </div>
+
+                {/* Token strip */}
+                <AnimatePresence>
+                  {ttsTokens.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="flex gap-2 overflow-x-auto pb-1 snap-x"
+                    >
+                      {ttsTokens.map((token, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setTtsCurrentIdx(i)}
+                          className={`flex-shrink-0 snap-start flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl text-xs font-semibold border-2 transition-all duration-200 ${
+                            i === ttsCurrentIdx
+                              ? 'border-primary bg-primary/10 text-primary dark:bg-primary/20'
+                              : token.entry
+                              ? 'border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:border-green-400 dark:hover:border-green-500'
+                              : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                          }`}
+                        >
+                          <span className="font-extrabold uppercase tracking-wide">{token.label}</span>
+                          <span className="text-[9px] opacity-60 font-normal leading-none">
+                            {token.entry ? (token.entry.media_type === 'video' ? '▶ vid' : '◉ img') : '—'}
+                          </span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Media display */}
+                <AnimatePresence>
+                  {ttsTokens.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="relative flex items-center justify-center overflow-hidden border shadow-2xl bg-gray-900 border-gray-700/50 rounded-3xl aspect-video"
+                    >
+                      <AnimatePresence mode="wait">
+                        {ttsTokens[ttsCurrentIdx]?.entry ? (
+                          <motion.div
+                            key={`media-${ttsCurrentIdx}`}
+                            initial={{ opacity: 0, scale: 0.97 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 1.02 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute inset-0 flex items-center justify-center bg-gray-900"
+                          >
+                            {ttsTokens[ttsCurrentIdx].entry.media_type === 'video' ? (
+                              <video
+                                ref={ttsVideoRef}
+                                key={`v-${ttsCurrentIdx}`}
+                                src={ttsTokens[ttsCurrentIdx].entry.media_url}
+                                autoPlay
+                                loop={!ttsAutoPlaying}
+                                muted
+                                playsInline
+                                onEnded={() => {
+                                  if (!ttsAutoPlaying) return;
+                                  if (ttsCurrentIdx < ttsTokens.length - 1) {
+                                    setTtsCurrentIdx(i => i + 1);
+                                  } else {
+                                    setTtsAutoPlaying(false);
+                                  }
+                                }}
+                                className="w-full h-full object-contain"
+                              />
+                            ) : (
+                              <img
+                                src={ttsTokens[ttsCurrentIdx].entry.media_url}
+                                alt={`Sign for ${ttsTokens[ttsCurrentIdx].label}`}
+                                className="w-full h-full object-contain"
+                              />
+                            )}
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key={`empty-${ttsCurrentIdx}`}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="flex flex-col items-center gap-2 text-gray-400 dark:text-gray-500 px-6 text-center"
+                          >
+                            <BookOpen size={40} className="opacity-30 mb-1" />
+                            <p className="text-sm font-semibold">
+                              No sign for "<span className="uppercase">{ttsTokens[ttsCurrentIdx]?.label}</span>"
+                            </p>
+                            <p className="text-xs opacity-60">Not in the dictionary yet</p>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Label overlay */}
+                      <div className="absolute top-3 left-3 z-10 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-full border border-white/10 shadow-lg">
+                        <span className="text-white text-sm font-bold uppercase tracking-wide">
+                          {ttsTokens[ttsCurrentIdx]?.label}
+                        </span>
+                      </div>
+
+                      {/* Counter */}
+                      <div className="absolute top-3 right-3 z-10 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-full border border-white/10 shadow-lg">
+                        <span className="text-white text-xs font-medium tabular-nums">
+                          {ttsCurrentIdx + 1} / {ttsTokens.length}
+                        </span>
+                      </div>
+
+                      {/* Navigation */}
+                      <div className="absolute inset-x-0 bottom-3 z-10 flex justify-center items-center gap-2">
+                        <button
+                          onClick={() => { clearTimeout(ttsAutoPlayTimerRef.current); setTtsAutoPlaying(false); setTtsCurrentIdx(i => Math.max(0, i - 1)); }}
+                          disabled={ttsCurrentIdx === 0}
+                          className="p-2.5 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full border border-white/10 text-white disabled:opacity-30 transition-all duration-200 shadow-lg"
+                        >
+                          <ArrowLeft size={16} />
+                        </button>
+                        {ttsTokens.length > 1 && (
+                          <button
+                            onClick={() => {
+                              if (ttsAutoPlaying) {
+                                clearTimeout(ttsAutoPlayTimerRef.current);
+                                setTtsAutoPlaying(false);
+                              } else {
+                                if (ttsCurrentIdx >= ttsTokens.length - 1) setTtsCurrentIdx(0);
+                                setTtsAutoPlaying(true);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 px-4 py-2.5 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full border border-white/10 text-white transition-all duration-200 shadow-lg text-xs font-semibold"
+                          >
+                            {ttsAutoPlaying ? <><Pause size={14} /> Pause</> : <><Play size={14} /> Play All</>}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => { clearTimeout(ttsAutoPlayTimerRef.current); setTtsAutoPlaying(false); setTtsCurrentIdx(i => Math.min(ttsTokens.length - 1, i + 1)); }}
+                          disabled={ttsCurrentIdx === ttsTokens.length - 1}
+                          className="p-2.5 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full border border-white/10 text-white disabled:opacity-30 transition-all duration-200 shadow-lg"
+                        >
+                          <ArrowRight size={16} />
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Error */}
+                <AnimatePresence>
+                  {ttsError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 rounded-xl"
+                    >
+                      <AlertTriangle size={15} className="text-red-500 shrink-0" />
+                      <p className="text-xs text-red-600 dark:text-red-400">{ttsError}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Empty state */}
+                {ttsTokens.length === 0 && !ttsLoading && !ttsError && (
+                  <div className="flex flex-col items-center gap-3 py-10 sm:py-12 text-gray-400 dark:text-gray-500 border-2 border-dashed border-gray-200 dark:border-gray-700/50 rounded-3xl">
+                    <BookOpen size={44} className="opacity-20" />
+                    <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">Enter text above and tap Show Signs</p>
+                    <p className="text-xs opacity-70 text-center px-6 leading-relaxed">
+                      Words are matched from the sign dictionary.<br />Unknown words fall back to letter-by-letter.
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
             <div className="relative flex items-center justify-center overflow-hidden border shadow-2xl bg-gray-100/50 border-gray-200/50 dark:bg-gray-800/30 dark:border-gray-700/50 rounded-3xl aspect-video backdrop-blur-sm group">
               <div className="absolute inset-0 z-0 pointer-events-none rounded-3xl ring-1 ring-inset ring-black/5 dark:ring-white/5" />
 
@@ -570,6 +1092,101 @@ const Translator = () => {
                           </motion.div>
                         )}
                       </AnimatePresence>
+
+                      {/* ── FEEDBACK OVERLAYS (all camera modes) ────────────────── */}
+
+                      {/* 1. NO HAND DETECTED — red warning, all modes (fires after 6s absence) */}
+                      <AnimatePresence>
+                        {showNoHandWarning && !isCollecting && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 6 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute z-30 flex justify-center pointer-events-none inset-x-3 bottom-16 sm:bottom-20"
+                          >
+                            <div className="flex items-center gap-2 px-4 py-2 border rounded-full shadow-xl bg-red-500/90 border-red-400/30 backdrop-blur-md">
+                              <AlertTriangle size={14} className="text-white shrink-0" />
+                              <span className="text-xs font-semibold text-white">No hand detected — move your hand into frame</span>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* 2. LOW CONFIDENCE — yellow warning, alphabet & number only (fires after 3s) */}
+                      <AnimatePresence>
+                        {showLowConfWarning && signMode !== 'word' && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 6 }}
+                            transition={{ duration: 0.25 }}
+                            className="absolute z-30 flex justify-center pointer-events-none inset-x-3 bottom-16 sm:bottom-20"
+                          >
+                            <div className="flex items-center gap-2 px-4 py-2 border rounded-full shadow-xl bg-yellow-500/90 border-yellow-400/30 backdrop-blur-md">
+                              <Eye size={14} className="text-white shrink-0" />
+                              <span className="text-xs font-semibold text-white">
+                                {signConfidence > 0
+                                  ? `Low confidence (${Math.round(signConfidence * 100)}%) — adjust hand position`
+                                  : 'Position unclear — face your palm toward the camera'}
+                              </span>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* 3. SIGN RECOGNIZED + HOLD PROGRESS — alphabet & number only */}
+                      <AnimatePresence>
+                        {handDetected && currentSign !== '' && signMode !== 'word' && (
+                          <motion.div
+                            key={currentSign}
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute z-30 flex justify-center pointer-events-none inset-x-3 bottom-16 sm:bottom-20"
+                          >
+                            <div className="flex items-center gap-3 px-4 py-2 border rounded-full shadow-xl bg-black/70 border-white/10 backdrop-blur-md">
+                              {/* Sign letter / number */}
+                              <span className="text-lg font-extrabold leading-none text-white uppercase">{currentSign}</span>
+                              {/* Confidence dots */}
+                              <ConfidenceDots confidence={signConfidence} />
+                              {/* Hold progress bar pill */}
+                              <div className="flex items-center gap-1.5">
+                                <div className="relative w-20 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                                  <motion.div
+                                    className={`absolute inset-y-0 left-0 rounded-full ${holdProgress >= 1 ? 'bg-green-400' : 'bg-primary'}`}
+                                    animate={{ width: `${holdProgress * 100}%` }}
+                                    transition={{ duration: 0.1 }}
+                                  />
+                                </div>
+                                <span className="text-[10px] text-white/50 tabular-nums w-7">
+                                  {holdProgress >= 1 ? '✓' : `${Math.round(holdProgress * 100)}%`}
+                                </span>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* 4. HOLD PROGRESS BAR — thin strip at very bottom edge of camera */}
+                      <AnimatePresence>
+                        {holdProgress > 0 && signMode !== 'word' && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-x-0 bottom-0 z-30 h-1 overflow-hidden pointer-events-none bg-white/10 rounded-b-3xl"
+                          >
+                            <motion.div
+                              className={`h-full ${holdProgress >= 1 ? 'bg-green-400' : 'bg-primary'}`}
+                              animate={{ width: `${holdProgress * 100}%` }}
+                              transition={{ duration: 0.1 }}
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
                     </motion.div>
                   ) : (
                     <div className="z-10 flex flex-col items-center text-gray-400 transition-transform duration-500 dark:text-gray-500 group-hover:scale-105">
@@ -584,12 +1201,52 @@ const Translator = () => {
               )}
 
               {mode === 'text' && (
-                <textarea
-                  value={inputText}
-                  onChange={(e) => { setInputText(e.target.value); setIsFavorited(false); }}
-                  placeholder="Start typing your phrase here..."
-                  className="relative z-10 w-full h-full p-6 text-lg text-gray-900 bg-transparent resize-none sm:p-8 sm:text-xl dark:text-white placeholder-gray-400/80 dark:placeholder-gray-600 focus:outline-none"
-                />
+                <>
+                  <textarea
+                    value={inputText}
+                    onChange={(e) => { setInputText(e.target.value); setIsFavorited(false); }}
+                    placeholder={isListening ? 'Listening… speak now' : 'Start typing or use the mic…'}
+                    className={`relative z-10 w-full h-full p-6 pb-16 text-lg text-gray-900 bg-transparent resize-none sm:p-8 sm:pb-16 sm:text-xl dark:text-white placeholder-gray-400/80 dark:placeholder-gray-600 focus:outline-none transition-all ${isListening ? 'placeholder-red-400 dark:placeholder-red-500' : ''}`}
+                  />
+
+                  {/* Listening badge — top-left */}
+                  <AnimatePresence>
+                    {isListening && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 bg-red-500 rounded-full shadow-lg pointer-events-none"
+                      >
+                        <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                        <span className="text-xs font-semibold text-white">Listening…</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Mic button — bottom-right inside box */}
+                  <div className="absolute z-20 bottom-3 right-3">
+                    {voiceSupported ? (
+                      <button
+                        onClick={toggleVoiceTyping}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-full font-semibold text-sm shadow-lg transition-all duration-200
+                          ${isListening
+                            ? 'bg-red-500 hover:bg-red-600 text-white ring-4 ring-red-500/25'
+                            : 'bg-primary hover:bg-primary/90 text-white ring-4 ring-primary/20'
+                          }`}
+                      >
+                        {isListening
+                          ? <><MicOff size={15} /> Stop</>
+                          : <><Mic size={15} /> Voice Type</>
+                        }
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-full text-xs text-gray-400 border border-gray-200 dark:border-gray-700">
+                        <MicOff size={13} /> Not supported
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
 
               {/* Tips button when not recording */}
@@ -624,6 +1281,7 @@ const Translator = () => {
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {/* ══════════════════════════════════════════════════════════
@@ -631,6 +1289,95 @@ const Translator = () => {
           ══════════════════════════════════════════════════════════ */}
           <div className="flex flex-col gap-4">
 
+            {mode === 'text-to-sign' ? (
+              <div className="flex flex-col gap-4">
+                {/* Stats */}
+                {ttsTokens.length > 0 && (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/30 rounded-2xl text-center">
+                      <p className="text-2xl font-extrabold text-green-600 dark:text-green-400">{ttsTokens.filter(t => t.entry).length}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Found</p>
+                    </div>
+                    <div className="p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/40 rounded-2xl text-center">
+                      <p className="text-2xl font-extrabold text-gray-400">{ttsTokens.filter(t => !t.entry).length}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Not found</p>
+                    </div>
+                    <div className="p-3 bg-primary/10 border border-primary/20 rounded-2xl text-center">
+                      <p className="text-2xl font-extrabold text-primary">{ttsTokens.length}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Total</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Current sign info */}
+                <div className="p-4 sm:p-5 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700/30 rounded-2xl shadow-sm">
+                  <h3 className="text-xs font-bold tracking-widest text-gray-500 dark:text-gray-400/80 uppercase mb-3">Current Sign</h3>
+                  {ttsTokens.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 py-6 text-gray-300 dark:text-gray-600">
+                      <BookOpen size={28} className="opacity-40" />
+                      <p className="text-xs text-center text-gray-400 dark:text-gray-500">Results will appear here</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-3xl font-extrabold text-gray-900 dark:text-white uppercase tracking-wide">
+                          {ttsTokens[ttsCurrentIdx]?.label}
+                        </span>
+                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full mt-1 shrink-0 ${ttsTokens[ttsCurrentIdx]?.entry ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}>
+                          {ttsTokens[ttsCurrentIdx]?.entry ? '✓ Found' : '✗ Not found'}
+                        </span>
+                      </div>
+                      {ttsTokens[ttsCurrentIdx]?.entry && (
+                        <div className="flex flex-wrap gap-2">
+                          <span className="px-2.5 py-1 text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full capitalize">
+                            {ttsTokens[ttsCurrentIdx].entry.category}
+                          </span>
+                          <span className="px-2.5 py-1 text-xs font-medium bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full capitalize">
+                            {ttsTokens[ttsCurrentIdx].entry.media_type}
+                          </span>
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-400">{ttsCurrentIdx + 1} of {ttsTokens.length} signs</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* All tokens list */}
+                {ttsTokens.length > 0 && (
+                  <div className="p-4 sm:p-5 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700/30 rounded-2xl shadow-sm">
+                    <h3 className="text-xs font-bold tracking-widest text-gray-500 dark:text-gray-400/80 uppercase mb-3">All Signs</h3>
+                    <div className="space-y-1 max-h-52 overflow-y-auto pr-1">
+                      {ttsTokens.map((token, i) => (
+                        <motion.button
+                          key={i}
+                          initial={{ opacity: 0, x: -4 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.02 }}
+                          onClick={() => setTtsCurrentIdx(i)}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all duration-150 ${i === ttsCurrentIdx ? 'bg-primary/10 dark:bg-primary/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
+                        >
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${token.entry ? 'bg-green-400' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                          <span className={`text-sm font-semibold uppercase flex-1 ${i === ttsCurrentIdx ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>{token.label}</span>
+                          {token.entry && (
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500 capitalize shrink-0">{token.entry.media_type}</span>
+                          )}
+                        </motion.button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Clear button */}
+                {(ttsTokens.length > 0 || ttsInput) && (
+                  <button
+                    onClick={() => { setTtsTokens([]); setTtsInput(''); setTtsCurrentIdx(0); setTtsError(''); }}
+                    className="flex items-center justify-center gap-2 p-3 text-red-500 bg-red-50 border border-red-100 dark:bg-[#341b25] dark:border-[#52212d] dark:text-[#f87171] rounded-xl hover:brightness-110 transition-all text-sm font-semibold"
+                  >
+                    <Trash2 size={16} /> Clear All
+                  </button>
+                )}
+              </div>
+            ) : (<>
             {/* Language selectors */}
             <div className="flex flex-col gap-4 p-4 sm:p-5 bg-white border border-gray-200 shadow-sm rounded-2xl dark:bg-[#1e293b] dark:border-gray-700/30">
               {/* From row — hidden in number mode (numbers are language-agnostic) */}
@@ -773,6 +1520,7 @@ const Translator = () => {
                 </button>
               ))}
             </div>
+            </>)}
           </div>
         </div>
 

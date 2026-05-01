@@ -24,7 +24,7 @@ const StarDisplay = ({ value, size = 'sm' }) => {
 const ratingLabel = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
 
 const StatCard = ({ title, value, icon: Icon, sub, colorClass }) => (
-  <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl p-6 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm hover:-translate-y-1 transition-transform">
+  <div className="bg-glass p-6 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm hover:-translate-y-1 transition-transform">
     <div className="flex items-center justify-between">
       <div>
         <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">{title}</p>
@@ -91,14 +91,10 @@ const AdminFeedbacks = () => {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
       {/* header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Feedback Management</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Review and manage all user-submitted feedback.</p>
-        </div>
+      <div className="flex justify-end">
         <button
           onClick={loadAll}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/50 dark:border-slate-800/50 text-slate-600 dark:text-slate-300 hover:border-blue-400 transition-all text-sm font-medium shadow-sm"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-glass border border-slate-200/50 dark:border-slate-800/50 text-slate-600 dark:text-slate-300 hover:border-blue-400 transition-all text-sm font-medium shadow-sm"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
@@ -133,7 +129,7 @@ const AdminFeedbacks = () => {
 
       {/* ── RATING DISTRIBUTION BAR ──────────────────────────── */}
       {stats && (
-        <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl p-6 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm">
+        <div className="bg-glass p-6 rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm">
           <h3 className="text-base font-semibold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
             <BarChart2 className="w-5 h-5 text-blue-500" />
             Rating Distribution
@@ -173,7 +169,7 @@ const AdminFeedbacks = () => {
             placeholder="Search by user, email or message…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/50 dark:border-slate-800/50 text-slate-700 dark:text-slate-200 placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500/50 transition"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-glass border border-slate-200/50 dark:border-slate-800/50 text-slate-700 dark:text-slate-200 placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500/50 transition"
           />
         </div>
         <div className="relative">
@@ -181,7 +177,7 @@ const AdminFeedbacks = () => {
           <select
             value={filterRating}
             onChange={(e) => setFilterRating(e.target.value)}
-            className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/50 dark:border-slate-800/50 text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500/50 transition cursor-pointer"
+            className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-glass border border-slate-200/50 dark:border-slate-800/50 text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500/50 transition cursor-pointer"
           >
             <option value="">All Ratings</option>
             {[5, 4, 3, 2, 1].map((r) => (
@@ -192,7 +188,7 @@ const AdminFeedbacks = () => {
       </div>
 
       {/* ── TABLE ────────────────────────────────────────────── */}
-      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm overflow-hidden">
+      <div className="bg-glass rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -300,7 +296,7 @@ const AdminFeedbacks = () => {
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="bg-white dark:bg-slate-900 rounded-3xl p-8 w-full max-w-sm shadow-2xl border border-slate-200 dark:border-slate-700 text-center"
+              className="bg-glass rounded-3xl p-8 w-full max-w-sm shadow-2xl border border-slate-200 dark:border-slate-700 text-center"
               initial={{ scale: 0.9 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.9 }}

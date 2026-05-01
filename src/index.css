@@ -39,3 +39,39 @@ body {
 .animate-gradient {
   animation: gradient 8s linear infinite;
 }
+
+@layer utilities {
+  .bg-glass {
+    @apply bg-white/30 dark:bg-black/30 backdrop-blur-xl border border-white/40 dark:border-white/20 shadow-[0_8px_32px_0_rgba(31,38,135,0.1)] dark:shadow-[0_8px_32px_0_rgba(0,0,0,0.3)];
+  }
+  
+  .bg-glass-heavy {
+    @apply bg-white/40 dark:bg-black/50 backdrop-blur-2xl border border-white/50 dark:border-white/20 shadow-lg;
+  }
+  
+  .glass-button {
+    @apply bg-white/30 dark:bg-white/10 backdrop-blur-md border border-white/40 dark:border-white/20 hover:bg-white/50 dark:hover:bg-white/20 transition-all duration-300 shadow-sm text-slate-800 dark:text-slate-100;
+  }
+  
+  .glass-input {
+    @apply bg-white/40 dark:bg-black/40 backdrop-blur-md border border-white/50 dark:border-white/20 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none transition-all duration-300 placeholder-slate-500 dark:placeholder-slate-400 text-slate-900 dark:text-slate-100;
+  }
+  
+  .admin-bg {
+    @apply bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 dark:from-indigo-950 dark:via-purple-950 dark:to-slate-950;
+  }
+  .admin-bg::before {
+    content: '';
+    position: fixed;
+    top: -50%; left: -50%; width: 200%; height: 200%;
+    background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15), transparent 60%),
+                radial-gradient(circle at 80% 20%, rgba(217, 70, 239, 0.15), transparent 50%);
+    z-index: -1;
+    pointer-events: none;
+    animation: rotate 30s linear infinite;
+  }
+  @keyframes rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+}

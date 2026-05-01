@@ -1,102 +1,169 @@
-import React from 'react';
-import { Save } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Save, User, Palette } from 'lucide-react';
+import { adminService, authService } from '../../services/api';
 
 const Settings = () => {
+  const [user, setUser] = useState(null);
+  const [profileForm, setProfileForm] = useState({ username: '', email: '' });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMsg, setProfileMsg] = useState({ text: '', type: '' });
+  const [bgTheme, setBgTheme] = useState(localStorage.getItem('adminBgTheme') || 'liquid');
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        setUser(u);
+        setProfileForm({ username: u.username || '', email: u.email || '' });
+      } catch (e) {}
+    }
+  }, []);
+
+  const handleThemeChange = (e) => {
+    const val = e.target.value;
+    setBgTheme(val);
+    localStorage.setItem('adminBgTheme', val);
+    window.dispatchEvent(new Event('admin-theme-update'));
+  };
+
+  const handleProfileSave = async (e) => {
+    e.preventDefault();
+    if (!user) return;
+    setSavingProfile(true);
+    setProfileMsg({ text: '', type: '' });
+
+    try {
+      // 1. Update Appwrite (source of truth for auth & prefs)
+      await authService.updateProfile(profileForm.username, profileForm.email);
+
+      // 2. Update MongoDB (backend sync)
+      const targetId = user.id || user.$id;
+      const updatedUser = await adminService.updateAdmin(targetId, {
+        username: profileForm.username,
+        email: profileForm.email
+      });
+      
+      const mergedUser = { ...user, ...updatedUser };
+      localStorage.setItem('user', JSON.stringify(mergedUser));
+      window.dispatchEvent(new Event('user-update'));
+      
+      setProfileMsg({ text: 'Profile updated successfully!', type: 'success' });
+    } catch (err) {
+      setProfileMsg({ text: err?.response?.data?.detail || err?.response?.data?.error || err.message || 'Failed to update profile', type: 'error' });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Platform Settings</h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-1">Configure global application settings and preferences.</p>
-      </div>
 
-      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-200/50 dark:border-slate-800/50">
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">General Information</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Update platform name, contact email and basic settings.</p>
-        </div>
-        
-        <div className="p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Platform Name</label>
-              <input 
-                type="text" 
-                defaultValue="SignBridge AI"
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all text-slate-800 dark:text-slate-100"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Support Email</label>
-              <input 
-                type="email" 
-                defaultValue="support@signbridge.com"
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all text-slate-800 dark:text-slate-100"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Platform Description</label>
-            <textarea 
-              rows={4}
-              defaultValue="SignBridge AI offers real-time sign language translation services to bridge communication gaps."
-              className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all text-slate-800 dark:text-slate-100 resize-none"
-            ></textarea>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-200/50 dark:border-slate-800/50 flex justify-between items-center">
+      {/* Panel: Admin Profile Details */}
+      <div className="bg-glass rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-slate-200/50 dark:border-slate-800/50 flex items-center gap-3">
+          <User className="w-5 h-5 text-indigo-500" />
           <div>
-            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Preferences</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage system toggles and features.</p>
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Admin Profile</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Update your admin account details.</p>
           </div>
         </div>
-        
-        <div className="p-6 space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium text-slate-800 dark:text-slate-200">Maintenance Mode</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Disables access for all non-admin users.</p>
+        <div className="p-6">
+          <form onSubmit={handleProfileSave} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Username</label>
+                <input 
+                  type="text" 
+                  value={profileForm.username}
+                  onChange={(e) => setProfileForm({ ...profileForm, username: e.target.value })}
+                  className="glass-input w-full px-4 py-2 rounded-xl"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Email Address</label>
+                <input 
+                  type="email" 
+                  value={profileForm.email}
+                  onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                  className="glass-input w-full px-4 py-2 rounded-xl"
+                  required
+                />
+              </div>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" className="sr-only peer" />
-              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-            </label>
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium text-slate-800 dark:text-slate-200">New User Registration</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Allow new users to sign up for accounts.</p>
+            {profileMsg.text && (
+              <p className={`text-sm mt-2 ${profileMsg.type === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                {profileMsg.text}
+              </p>
+            )}
+            <div className="flex justify-end pt-2">
+              <button 
+                type="submit" 
+                disabled={savingProfile}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl glass-button bg-indigo-600/80 hover:bg-indigo-600 text-white font-medium shadow-lg transition-colors disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                {savingProfile ? 'Saving...' : 'Update Profile'}
+              </button>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" className="sr-only peer" defaultChecked />
-              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-            </label>
-          </div>
+          </form>
+        </div>
+      </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium text-slate-800 dark:text-slate-200">Email Notifications</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Send automatic welcome and alert emails.</p>
+      {/* Panel: Appearance / Theme */}
+      <div className="bg-glass rounded-2xl border border-slate-200/50 dark:border-slate-800/50 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-slate-200/50 dark:border-slate-800/50 flex items-center gap-3">
+          <Palette className="w-5 h-5 text-pink-500" />
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Appearance</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Customize the admin dashboard background theme.</p>
+          </div>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name="bgTheme" 
+                  value="liquid" 
+                  checked={bgTheme === 'liquid'}
+                  onChange={handleThemeChange}
+                  className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                />
+                <span className="text-slate-700 dark:text-slate-200 font-medium">Liquid Glass (Purple Mix)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name="bgTheme" 
+                  value="solid" 
+                  checked={bgTheme === 'solid'}
+                  onChange={handleThemeChange}
+                  className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                />
+                <span className="text-slate-700 dark:text-slate-200 font-medium">Solid Color (Slate)</span>
+              </label>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" className="sr-only peer" defaultChecked />
-              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-            </label>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+              Note: This setting is independent of the Light/Dark mode toggle in the top bar.
+            </p>
           </div>
         </div>
       </div>
+
+      {/* Panel 1: AI & Translation Engine */}
+
+
 
       <div className="flex justify-end pt-4 gap-4">
         <button className="px-6 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-          Cancel
+          Discard Changes
         </button>
-        <button className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-lg shadow-blue-500/30 transition-colors">
+        <button className="flex items-center gap-2 px-6 py-2.5 rounded-xl glass-button bg-blue-600/80 hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/30 transition-colors">
           <Save className="w-5 h-5" />
-          Save Changes
+          Save Settings
         </button>
       </div>
     </div>
