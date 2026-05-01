@@ -3,15 +3,15 @@ import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Palette, Shield, Clock, HelpCircle, LogOut, Sun, Moon, Zap } from 'lucide-react';
 
-import { useTheme } from '../context/ThemeContext';
-import { featureService, authService } from '../services/api';
+import { useTheme } from '../../context/ThemeContext';
+import { featureService, authService } from '../../services/api';
 
-import TabProfile from '../components/profile/TabProfile';
-import TabAppearance from '../components/profile/TabAppearance';
-import TabSecurity from '../components/profile/TabSecurity';
-import TabHistory from '../components/profile/TabHistory';
-import TabHelp from '../components/profile/TabHelp';
-import { AnimatedThemeToggler } from '../components/AnimatedThemeToggler';
+import TabProfile from '../../components/profile/TabProfile';
+import TabAppearance from '../../components/profile/TabAppearance';
+import TabSecurity from '../../components/profile/TabSecurity';
+import TabHistory from '../../components/profile/TabHistory';
+import TabHelp from '../../components/profile/TabHelp';
+import { AnimatedThemeToggler } from '../../components/AnimatedThemeToggler';
 
 const NAV_ITEMS = [
   { id: 'profile', icon: User, label: 'Profile' },
