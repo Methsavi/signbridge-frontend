@@ -10,6 +10,7 @@ const TextToSignSidePanel = ({
   setTtsInput,
   ttsError,
   setTtsError,
+  setTtsTokens,
   setTtsAutoPlaying,
 }) => {
   return (

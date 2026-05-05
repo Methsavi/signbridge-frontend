@@ -100,6 +100,7 @@ const Translator = () => {
   const [ttsIsListening, setTtsIsListening] = useState(false);
   const [ttsError, setTtsError] = useState('');
   const [ttsAutoPlaying, setTtsAutoPlaying] = useState(false);
+  const [ttsSuggestions, setTtsSuggestions] = useState([]);
   const ttsRecognitionRef = useRef(null);
   const dictEntriesCacheRef = useRef(null);
   const ttsAutoPlayTimerRef = useRef(null);
@@ -329,7 +330,7 @@ const Translator = () => {
           const imgSrc = webcamRef.current.getScreenshot();
           if (imgSrc) socketRef.current.send(imgSrc);
         }
-      }, 200);
+      }, 66);
     };
 
     socketRef.current.onmessage = (event) => {
@@ -610,6 +611,55 @@ const Translator = () => {
     }
   }, [ttsInput, resolveTextToSign]);
 
+  // ── Text-to-Sign suggestions ──────────────────────────────────────
+  useEffect(() => {
+    if (mode !== 'text-to-sign' || !ttsInput.trim()) { setTtsSuggestions([]); return; }
+    let cancelled = false;
+    (async () => {
+      const entries = await loadDictEntries();
+      if (cancelled) return;
+      const trimmed = ttsInput.trim().toLowerCase();
+      const words = trimmed.split(/\s+/);
+      const lastWord = words[words.length - 1];
+      const seen = new Set();
+      const suggestions = [];
+
+      // Sentence entries that start with the full input (prefix match)
+      if (trimmed.length >= 2) {
+        for (const e of entries) {
+          const lbl = e.label.toLowerCase();
+          if (e.category === 'sentence' && lbl.startsWith(trimmed) && lbl !== trimmed) {
+            if (!seen.has(lbl)) { seen.add(lbl); suggestions.push({ label: e.label, replaceAll: true }); }
+          }
+        }
+      }
+
+      // Word/sentence entries matching the last partial word
+      if (lastWord.length >= 1) {
+        for (const e of entries) {
+          const lbl = e.label.toLowerCase();
+          if ((e.category === 'word' || e.category === 'sentence') && lbl.startsWith(lastWord) && lbl !== lastWord) {
+            if (!seen.has(lbl)) { seen.add(lbl); suggestions.push({ label: e.label, replaceAll: false }); }
+          }
+        }
+      }
+
+      setTtsSuggestions(suggestions.slice(0, 8));
+    })();
+    return () => { cancelled = true; };
+  }, [ttsInput, mode, loadDictEntries]);
+
+  const handleSuggestionPick = useCallback((suggestion) => {
+    setTtsInput(prev => {
+      if (suggestion.replaceAll) return suggestion.label + ' ';
+      const parts = prev.trimEnd().split(/\s+/);
+      parts[parts.length - 1] = suggestion.label;
+      return parts.join(' ') + ' ';
+    });
+    setTtsSuggestions([]);
+    if (ttsTokens.length > 0) setTtsTokens([]);
+  }, [ttsTokens.length]);
+
   // Auto-advance for image / not-found tokens
   useEffect(() => {
     if (!ttsAutoPlaying || ttsTokens.length === 0) return;
@@ -705,6 +755,8 @@ const Translator = () => {
                 voiceSupported={voiceSupported}
                 toggleTtsVoice={toggleTtsVoice}
                 handleTextToSignSubmit={handleTextToSignSubmit}
+                ttsSuggestions={ttsSuggestions}
+                onSuggestionPick={handleSuggestionPick}
               />
             ) : (
               <InputPanel
