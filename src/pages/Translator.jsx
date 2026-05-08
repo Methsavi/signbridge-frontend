@@ -226,6 +226,7 @@ const Translator = () => {
       await featureService.saveHistory(user.user_id, p.original, p.translated, p.lang, p.mode, p.source);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus(null), 2000);
+      window.dispatchEvent(new CustomEvent('history-updated'));
     } catch { setSaveStatus('error'); }
   }, []);
 
