@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Palette, Shield, Clock, HelpCircle, LogOut, Sun, Moon, Zap } from 'lucide-react';
@@ -37,26 +37,51 @@ const Profile = () => {
   const [user, setUser] = useState(null);
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const userRef = useRef(null);
+
+  const loadHistory = useCallback(async (userId) => {
+    try {
+      const data = await featureService.getHistory(userId);
+      setHistory(data);
+    } catch { /* silent */ }
+  }, []);
 
   useEffect(() => {
     const load = async () => {
       try {
         const currentUser = await authService.getUser();
         setUser(currentUser);
+        userRef.current = currentUser;
         localStorage.setItem('user', JSON.stringify(currentUser));
         window.dispatchEvent(new Event('user-update'));
-        
+
         setLoadingHistory(true);
-        try {
-          const data = await featureService.getHistory(currentUser.user_id);
-          setHistory(data);
-        } catch { /* silent */ } finally { setLoadingHistory(false); }
+        await loadHistory(currentUser.user_id);
       } catch {
         navigate('/login');
+      } finally {
+        setLoadingHistory(false);
       }
     };
     void load();
-  }, [navigate]);
+  }, [navigate, loadHistory]);
+
+  useEffect(() => {
+    const handleHistoryUpdated = () => {
+      if (userRef.current?.user_id) loadHistory(userRef.current.user_id);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && userRef.current?.user_id) {
+        loadHistory(userRef.current.user_id);
+      }
+    };
+    window.addEventListener('history-updated', handleHistoryUpdated);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('history-updated', handleHistoryUpdated);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadHistory]);
 
   const handleLogout = async () => {
     try { await authService.logout(); } catch { /* ignore */ }

@@ -22,6 +22,8 @@ const TextToSignInputPanel = ({
   voiceSupported,
   toggleTtsVoice,
   handleTextToSignSubmit,
+  ttsSuggestions = [],
+  onSuggestionPick,
 }) => {
   return (
     <div className="flex flex-col gap-3">
@@ -78,6 +80,29 @@ const TextToSignInputPanel = ({
           </button>
         </div>
       </div>
+
+      {/* Suggestions */}
+      <AnimatePresence>
+        {ttsSuggestions.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="flex flex-wrap gap-1.5"
+          >
+            <span className="text-xs text-gray-400 dark:text-gray-500 self-center mr-1 shrink-0">Suggestions:</span>
+            {ttsSuggestions.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => onSuggestionPick(s)}
+                className="px-2.5 py-1 rounded-full text-xs font-semibold border border-primary/40 bg-primary/5 text-primary hover:bg-primary/15 dark:bg-primary/10 dark:hover:bg-primary/20 transition-colors duration-150"
+              >
+                {s.label}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Token strip */}
       <AnimatePresence>

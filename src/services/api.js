@@ -109,11 +109,12 @@ export const authService = {
 
       // Fallback sync: if a user verified in Appwrite but MongoDB save failed,
       // we silently attempt to sync them now. This makes login resilient.
+      // Uses a deterministic placeholder password so the real credential is never retransmitted.
       try {
         await api.post('/users/register', {
           username: user.name || email.split('@')[0],
           email: user.email,
-          password,          // re-use for MongoDB storage (hashed server-side)
+          password: `restore-${user.$id}-signbridge`,
           appwrite_id: user.$id,
         });
       } catch (syncError) {
