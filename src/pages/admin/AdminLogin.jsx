@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, ShieldCheck, AlertCircle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { authService, adminService } from '../../services/api';
 
 const AdminLogin = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -125,12 +126,20 @@ const AdminLogin = () => {
                   </div>
                   <input
                     name="password"
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     required
-                    className="block w-full py-3.5 pl-11 pr-4 text-slate-900 placeholder-slate-400 transition-all border border-white/20 rounded-xl bg-white/50 focus:bg-white dark:text-slate-100 dark:placeholder-slate-500 dark:border-slate-800 dark:bg-slate-950/50 dark:focus:bg-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 sm:text-sm"
+                    className="block w-full py-3.5 pl-11 pr-11 text-slate-900 placeholder-slate-400 transition-all border border-white/20 rounded-xl bg-white/50 focus:bg-white dark:text-slate-100 dark:placeholder-slate-500 dark:border-slate-800 dark:bg-slate-950/50 dark:focus:bg-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 sm:text-sm"
                     placeholder="••••••••"
                     onChange={handleChange}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
                 </div>
               </div>
             </div>
