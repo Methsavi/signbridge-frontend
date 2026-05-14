@@ -82,14 +82,6 @@ const TabProfile = ({ user, setUser, historyLength, setActiveTab, handleLogout }
           </form>
         )}
       </div>
-
-      <div className="p-6 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-900/30 rounded-2xl shadow-sm">
-        <h3 className="font-bold text-red-500 mb-1 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Danger Zone</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Logging out will end your current session immediately.</p>
-        <button onClick={handleLogout} className="flex items-center gap-2 px-5 py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition font-semibold">
-          <LogOut className="w-4 h-4" /> Sign Out
-        </button>
-      </div>
     </div>
   );
 };
