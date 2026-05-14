@@ -125,32 +125,16 @@ const Profile = () => {
           to="/"
           className="flex items-center gap-3 px-6 py-5 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors duration-200 group"
         >
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-primary/30 shrink-0 group-hover:scale-105 transition-transform duration-200">
-            SB
-          </div>
+          <img
+            src="/logo.png"
+            alt="SignBridge AI Logo"
+            className="w-9 h-9 rounded-xl object-cover shrink-0 group-hover:scale-105 transition-transform duration-200 shadow-md shadow-primary/30"
+          />
           <div>
-            <p className="font-bold text-gray-900 dark:text-white text-base leading-tight">SignBridge</p>
+            <p className="font-bold text-gray-900 dark:text-white text-base leading-tight">SignBridge AI</p>
             <p className="text-[10px] text-gray-400">Account Settings</p>
           </div>
         </Link>
-
-        {/* User card */}
-        <div className="px-4 py-4 border-b border-gray-100 dark:border-gray-800">
-          <div className="flex items-center gap-3 px-3 py-3 rounded-2xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/60">
-            {user.profile_picture ? (
-              <img src={user.profile_picture} alt="avatar"
-                className="w-10 h-10 rounded-full object-cover ring-2 ring-white dark:ring-gray-700 shadow shrink-0" />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold shrink-0 shadow">
-                {user.username?.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-sm truncate text-gray-900 dark:text-white">{user.username}</p>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
-            </div>
-          </div>
-        </div>
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
@@ -173,7 +157,22 @@ const Profile = () => {
         </nav>
 
         {/* Sign out */}
-        <div className="px-3 py-3 border-t border-gray-100 dark:border-gray-800">
+        <div className="px-3 py-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
+          {/* Logged-in account */}
+          <div className="flex items-center gap-3 px-3 py-3 rounded-2xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/60">
+            {user.profile_picture ? (
+              <img src={user.profile_picture} alt="avatar"
+                className="w-9 h-9 rounded-full object-cover ring-2 ring-white dark:ring-gray-700 shadow shrink-0" />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold shrink-0 shadow">
+                {user.username?.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-sm truncate text-gray-900 dark:text-white">{user.username}</p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
+            </div>
+          </div>
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-200 group"
