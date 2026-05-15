@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Mail, Lock, UserPlus, AlertCircle, ArrowLeft, CheckCircle, RefreshCw, ShieldCheck } from 'lucide-react';
+import { User, Mail, Lock, UserPlus, AlertCircle, ArrowLeft, CheckCircle, RefreshCw, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { authService, getReadableAuthError } from '../../services/api';
 
 const GoogleLogo = () => (
@@ -24,6 +24,7 @@ const MicrosoftLogo = () => (
 
 const Register = () => {
   const [formData, setFormData] = useState({ fullName: '', email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState('');
   const [pendingRegistration, setPendingRegistration] = useState(null);
   const [isVerificationSuccess, setIsVerificationSuccess] = useState(false);
@@ -414,13 +415,21 @@ const Register = () => {
                         </div>
                         <input
                           name="password"
-                          type="password"
+                          type={showPassword ? 'text' : 'password'}
                           required
                           autoComplete="new-password"
                           placeholder="••••••••"
                           onChange={handleChange}
-                          className="block w-full py-3 pl-11 pr-4 text-sm text-gray-900 dark:text-white placeholder-gray-400 bg-white dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                          className="block w-full py-3 pl-11 pr-11 text-sm text-gray-900 dark:text-white placeholder-gray-400 bg-white dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
                       </div>
                     </div>
                   </motion.div>
