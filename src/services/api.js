@@ -318,6 +318,11 @@ export const featureService = {
     }
   },
 
+  aslGloss: async (text) => {
+    const response = await api.post('/features/asl-gloss', { text });
+    return response.data; // { original, gloss, words }
+  },
+
   saveHistory: async (userId, original, translated, lang, mode = 'word', sourceLang = 'sign') => {
     const response = await api.post('/features/history', {
       user_id: userId,
