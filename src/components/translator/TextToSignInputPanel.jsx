@@ -24,6 +24,7 @@ const TextToSignInputPanel = ({
   handleTextToSignSubmit,
   ttsSuggestions = [],
   onSuggestionPick,
+  ttsGloss = null,
 }) => {
   return (
     <div className="flex flex-col gap-3">
@@ -100,6 +101,31 @@ const TextToSignInputPanel = ({
                 {s.label}
               </button>
             ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ASL Gloss banner */}
+      <AnimatePresence>
+        {ttsGloss && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="flex flex-col gap-1 px-4 py-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700/40 rounded-xl"
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400 dark:text-indigo-500">
+              ASL Gloss
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                "{ttsGloss.original}"
+              </span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">→</span>
+              <span className="text-sm font-bold tracking-wide text-indigo-600 dark:text-indigo-300">
+                {ttsGloss.gloss}
+              </span>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

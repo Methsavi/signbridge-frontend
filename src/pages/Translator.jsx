@@ -101,6 +101,7 @@ const Translator = () => {
   const [ttsError, setTtsError] = useState('');
   const [ttsAutoPlaying, setTtsAutoPlaying] = useState(false);
   const [ttsSuggestions, setTtsSuggestions] = useState([]);
+  const [ttsGloss, setTtsGloss] = useState(null); // { original, gloss, words }
   const ttsRecognitionRef = useRef(null);
   const dictEntriesCacheRef = useRef(null);
   const ttsAutoPlayTimerRef = useRef(null);
@@ -248,7 +249,9 @@ const Translator = () => {
         source: modeRef.current === 'camera' ? 'sign' : sourceLang,
       };
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = setTimeout(saveCurrentSession, 5 * 60 * 1000);
+      // Save after 3 seconds so the history is captured even if the user
+      // navigates away quickly (previously 5 minutes — too long for hosted env).
+      autoSaveTimerRef.current = setTimeout(saveCurrentSession, 3000);
     } catch (err) { console.error('Translation error', err); }
   }, [targetLang, sourceLang, speakText, saveCurrentSession]);
 
@@ -598,15 +601,39 @@ const Translator = () => {
     if (!ttsInput.trim()) return;
     setTtsLoading(true);
     setTtsError('');
+    setTtsGloss(null);
     clearTimeout(ttsAutoPlayTimerRef.current);
     setTtsAutoPlaying(false);
     try {
-      const tokens = await resolveTextToSign(ttsInput);
+      // Convert English → ASL gloss via backend, then look up the gloss words
+      const glossResult = await featureService.aslGloss(ttsInput);
+      setTtsGloss(glossResult);
+      const tokens = await resolveTextToSign(glossResult.gloss);
       setTtsTokens(tokens);
       setTtsCurrentIdx(0);
       if (tokens.length > 1) setTtsAutoPlaying(true);
-    } catch {
-      setTtsError('Failed to load sign data. Please try again.');
+
+      // Save text-to-sign translations to history
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          await featureService.saveHistory(
+            user.user_id,
+            ttsInput,
+            glossResult.gloss,
+            'asl',
+            'text-to-sign',
+            'text'
+          );
+          window.dispatchEvent(new CustomEvent('history-updated'));
+        } catch {
+          // Non-fatal — translation still works even if save fails
+        }
+      }
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'Failed to load sign data.';
+      setTtsError(detail);
     } finally {
       setTtsLoading(false);
     }
@@ -758,6 +785,7 @@ const Translator = () => {
                 handleTextToSignSubmit={handleTextToSignSubmit}
                 ttsSuggestions={ttsSuggestions}
                 onSuggestionPick={handleSuggestionPick}
+                ttsGloss={ttsGloss}
               />
             ) : (
               <InputPanel
