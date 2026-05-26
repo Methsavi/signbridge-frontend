@@ -61,27 +61,38 @@ const TranslationPanel = ({
         </div>
 
         {/* Auto-speak toggle */}
-        <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-700/40">
+        <div className="flex flex-col gap-3 pt-1 border-t border-gray-100 dark:border-gray-700/40 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             {autoSpeak
               ? <Volume2 size={14} className="text-primary" />
               : <VolumeX size={14} className="text-gray-400" />
             }
-            <span className="text-sm font-bold text-gray-700 dark:text-gray-300">Auto-speak</span>
-            <span className="text-xs text-gray-400 dark:text-gray-500">
-              {autoSpeak ? 'On' : 'Off'}
-            </span>
+            <div className="flex flex-col leading-tight">
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-300">Auto-speak</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                {autoSpeak ? 'Speaks translated text automatically' : 'Manual speak only'}
+              </span>
+            </div>
           </div>
           <button
             onClick={toggleAutoSpeak}
             aria-label={autoSpeak ? 'Disable auto-speak' : 'Enable auto-speak'}
-            className={`relative w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
-              autoSpeak ? 'bg-primary' : 'bg-gray-200 dark:bg-gray-600'
+            className={`inline-flex items-center justify-between gap-3 self-start sm:self-center min-w-[96px] px-3 py-2 rounded-full border transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+              autoSpeak
+                ? 'border-primary/20 bg-primary/10 text-primary shadow-sm'
+                : 'border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-600/60 dark:bg-gray-700/60 dark:text-gray-300'
             }`}
           >
-            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${
-              autoSpeak ? 'translate-x-5' : 'translate-x-0.5'
-            }`} />
+            <span className="text-xs font-semibold uppercase tracking-wide">
+              {autoSpeak ? 'On' : 'Off'}
+            </span>
+            <span className={`relative inline-flex h-5 w-9 rounded-full transition-colors duration-200 ${
+              autoSpeak ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-500'
+            }`}>
+              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 ${
+                autoSpeak ? 'translate-x-4' : 'translate-x-0.5'
+              }`} />
+            </span>
           </button>
         </div>
       </div>
